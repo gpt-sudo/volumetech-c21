@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CENTURY21用 BASE版 - volumeTECH v23 iPad対応</title>
+<title>CENTURY21用 BASE版 - volumeTECH v25 表示中心補正</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -47,6 +47,11 @@ main { min-width: 0; }
   #canvas-container { min-height: 56vh; }
 }
 
+
+/* 3D renderer alignment fix */
+#canvas-container canvas { width: 100% !important; height: 100% !important; }
+#canvas-container .label-renderer-layer { width: 100% !important; height: 100% !important; }
+
 @media print { .print-hidden { display:none !important; } }
 </style>
 </head>
@@ -55,7 +60,7 @@ main { min-width: 0; }
 <header class="bg-white border-b border-zinc-200 px-5 py-3 flex items-center justify-between shrink-0 print-hidden">
   <div class="flex items-center gap-3">
     <h1 class="text-2xl font-black tracking-tight text-zinc-800">CENTURY21用 <span class="text-amber-500 font-light">BASE版</span></h1>
-    <span class="text-[10px] text-zinc-400 border-l pl-3 border-zinc-300 hidden md:block pt-1 font-bold tracking-widest">Powered by Volume TECH / v23 iPad対応</span>
+    <span class="text-[10px] text-zinc-400 border-l pl-3 border-zinc-300 hidden md:block pt-1 font-bold tracking-widest">Powered by Volume TECH / v25 表示中心補正</span>
   </div>
 </header>
 
@@ -2023,6 +2028,7 @@ function updateResultPanels(finalFootprintArea, tFloorArea, finalCountableArea, 
   results.bldgMaxHeight.textContent = maxHeight.toFixed(2);
 
   applyFloorVisibility();
+  requestAnimationFrame(() => keepCameraTargetOnModel());
 }
 
 function updateScene() {
@@ -3103,6 +3109,43 @@ function getCanvasSize() {
   const h = Math.max(1, Math.floor(rect.height || el?.clientHeight || window.innerHeight * 0.7));
   return { w, h };
 }
+
+function getVisibleSceneBox() {
+  if (!scene) return null;
+  const box = new THREE.Box3();
+  let hasVisibleMesh = false;
+  scene.traverse(obj => {
+    if (!obj || !obj.visible || obj.isCSS2DObject || obj.isLight || obj.isCamera) return;
+    if (obj.isMesh || obj.isLine || obj.isLineSegments) {
+      const objBox = new THREE.Box3().setFromObject(obj);
+      if (Number.isFinite(objBox.min.x) && Number.isFinite(objBox.max.x) && !objBox.isEmpty()) {
+        box.union(objBox);
+        hasVisibleMesh = true;
+      }
+    }
+  });
+  return hasVisibleMesh ? box : null;
+}
+
+function keepCameraTargetOnModel({ force = false } = {}) {
+  if (!controls || !camera) return;
+  const box = getVisibleSceneBox();
+  if (!box) return;
+  const center = box.getCenter(new THREE.Vector3());
+  center.y = Math.max(0, Math.min(center.y, 8));
+
+  const currentTarget = controls.target.clone();
+  const distanceFromModel = currentTarget.distanceTo(center);
+  const shouldCorrect = force || distanceFromModel > 8;
+  if (!shouldCorrect) return;
+
+  const delta = center.clone().sub(currentTarget);
+  controls.target.copy(center);
+  camera.position.add(delta);
+  camera.lookAt(center);
+  controls.update();
+}
+
 function resizeCanvasRenderers() {
   if(!cameraPersp || !cameraOrtho || !renderer || !labelRenderer) return;
   const { w, h } = getCanvasSize();
@@ -3114,8 +3157,20 @@ function resizeCanvasRenderers() {
   cameraOrtho.top = orthoSize;
   cameraOrtho.bottom = -orthoSize;
   cameraOrtho.updateProjectionMatrix();
-  renderer.setSize(w, h, false);
+
+  // updateStyle=true にして WebGL canvas と CSS2D label のCSSサイズを完全同期する。
+  // iPad/Safari の拡大縮小やアドレスバー伸縮時に、ポリゴンとラベルがずれて見える原因を抑える。
+  renderer.setSize(w, h, true);
+  renderer.domElement.style.width = `${w}px`;
+  renderer.domElement.style.height = `${h}px`;
+
   labelRenderer.setSize(w, h);
+  labelRenderer.domElement.style.left = '0';
+  labelRenderer.domElement.style.width = `${w}px`;
+  labelRenderer.domElement.style.height = `${h}px`;
+
+  keepCameraTargetOnModel();
+  controls?.update();
 }
 
 function init() {
@@ -3141,14 +3196,16 @@ function init() {
   const ipadMode = isIPadLike();
   renderer = new THREE.WebGLRenderer({ antialias: !ipadMode, alpha:true, powerPreference: ipadMode ? 'default' : 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, ipadMode ? 1 : 1.5));
-  renderer.setSize(initialCanvasSize.w, initialCanvasSize.h, false);
+  renderer.setSize(initialCanvasSize.w, initialCanvasSize.h, true);
   renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); showToast('3D表示を再読み込みしています', true); }, false);
   renderer.domElement.addEventListener('webglcontextrestored', () => { resizeCanvasRenderers(); updateScene(); }, false);
   containerEl.appendChild(renderer.domElement);
   labelRenderer = new CSS2DRenderer();
   labelRenderer.setSize(initialCanvasSize.w, initialCanvasSize.h);
+  labelRenderer.domElement.classList.add('label-renderer-layer');
   labelRenderer.domElement.style.position = 'absolute';
   labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.left = '0';
   labelRenderer.domElement.style.pointerEvents = 'none';
   containerEl.appendChild(labelRenderer.domElement);
   ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -3499,6 +3556,7 @@ function init() {
   setTimeout(resizeCanvasRenderers, 250);
   animate();
   updateScene();
+  requestAnimationFrame(() => keepCameraTargetOnModel({ force: true }));
 }
 function animate() {
   requestAnimationFrame(animate);

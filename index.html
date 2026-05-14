@@ -1782,7 +1782,13 @@ function getOneRoomLightVerticalH(floorData, buildingTopY) {
   return Math.max(0.1, h);
 }
 
-function getCurrentDistanceFromEdgeToFloorPolys(edge, floorPolys) {
+function getLightRoadWidthForEdge(edge) {
+  if (!edge || (edge.type !== 'front' && edge.type !== 'second')) return 0;
+  const w = Number(edge.effectiveWidth ?? edge.width ?? edge.roadWidthForLight ?? 0);
+  return Number.isFinite(w) ? Math.max(0, w) : 0;
+}
+
+function getDistanceFromEdgeToFloorPolys(edge, floorPolys) {
   if (!edge || !edge.Nf || !Array.isArray(floorPolys)) return 0;
   let minD = Infinity;
   for (const poly of floorPolys) {
@@ -1792,6 +1798,17 @@ function getCurrentDistanceFromEdgeToFloorPolys(edge, floorPolys) {
     }
   }
   return Number.isFinite(minD) ? Math.max(0, minD) : 0;
+}
+
+function getCurrentDistanceFromEdgeToFloorPolys(edge, floorPolys) {
+  const buildingSideD = getDistanceFromEdgeToFloorPolys(edge, floorPolys);
+  // 道路面採光の場合、採光距離Dは敷地境界までではなく道路反対側境界線までの水平距離として扱う。
+  // よって「建物から道路境界までの距離 + 道路幅員（2項道路は有効4m）」を現在Dにする。
+  return buildingSideD + getLightRoadWidthForEdge(edge);
+}
+
+function getLightSetbackLineDistanceFromEdge(edge, requiredD) {
+  return Math.max(0, requiredD - getLightRoadWidthForEdge(edge));
 }
 
 function buildLightEdgeData(basePoly, roads, adjLines, setbacks) {
@@ -1822,7 +1839,9 @@ function buildLightEdgeData(basePoly, roads, adjLines, setbacks) {
       p1: new THREE.Vector3(p1.x, 0, p1.z),
       p2: new THREE.Vector3(p2.x, 0, p2.z),
       Nf: Nf.clone ? Nf.clone().normalize() : new THREE.Vector3(Nf.x, 0, Nf.z).normalize(),
-      setback: Number.isFinite(setbacks?.[i]) ? setbacks[i] : 0
+      setback: Number.isFinite(setbacks?.[i]) ? setbacks[i] : 0,
+      width: road ? Number(road.width || 0) : 0,
+      effectiveWidth: road ? Number(road.effectiveWidth || road.width || 0) : 0
     });
   }
   return edgeList;
@@ -1869,25 +1888,30 @@ function renderOneRoomLightCheck(finalExempt, zoneCode, basePolyForClip = null) 
   if (residentialFloor) {
     const H = getOneRoomLightVerticalH(residentialFloor, buildingTopY);
     const requiredD = H * requiredDH;
-    const currentD = getCurrentDistanceFromEdgeToFloorPolys(edge, residentialFloor.polygons);
+    const boundaryD = getDistanceFromEdgeToFloorPolys(edge, residentialFloor.polygons);
+    const roadAddD = getLightRoadWidthForEdge(edge);
+    const currentD = boundaryD + roadAddD;
     const addSb = Math.max(0, requiredD - currentD);
     const kNow = (currentD / Math.max(H, 0.01)) * params.a - params.b;
     const status = addSb <= 0.05 ? 'OK' : addSb <= 1.0 ? '注意' : '厳しい';
-    rows.push({ floor: residentialFloor.floor, H, requiredD, currentD, addSb, kNow, status });
+    rows.push({ floor: residentialFloor.floor, H, requiredD, currentD, boundaryD, roadAddD, addSb, kNow, status });
     maxRequiredD = requiredD;
     maxAddSb = addSb;
   }
 
   if (maxRequiredD > 0 && edge.p1 && edge.p2) {
-    const p1 = edge.p1.clone().add(edge.Nf.clone().multiplyScalar(maxRequiredD));
-    const p2 = edge.p2.clone().add(edge.Nf.clone().multiplyScalar(maxRequiredD));
-    drawDashWithLabel(p1, p2, maxRequiredD.toFixed(2), `採光SB ${edge.label}`, 'light', basePolyForClip);
+    const lineD = getLightSetbackLineDistanceFromEdge(edge, maxRequiredD);
+    const p1 = edge.p1.clone().add(edge.Nf.clone().multiplyScalar(lineD));
+    const p2 = edge.p2.clone().add(edge.Nf.clone().multiplyScalar(lineD));
+    const labelVal = edge.type === 'adjacent' ? lineD.toFixed(2) : `${lineD.toFixed(2)} / 道路含D${maxRequiredD.toFixed(2)}`;
+    drawDashWithLabel(p1, p2, labelVal, `採光SB ${edge.label}`, 'light', basePolyForClip);
   }
 
   const statusClass = maxAddSb <= 0.05 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : maxAddSb <= 1.0 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
   const rowHtml = rows.length ? rows.map(r => {
     const c = r.status === 'OK' ? 'text-emerald-700' : r.status === '注意' ? 'text-amber-700' : 'text-red-700';
-    return `<tr class="border-t border-zinc-100"><td class="py-1.5 font-bold">${r.floor}F</td><td>${r.H.toFixed(2)}m</td><td>${r.requiredD.toFixed(2)}m</td><td>${r.currentD.toFixed(2)}m</td><td class="font-black ${c}">${r.addSb.toFixed(2)}m</td><td class="font-bold ${c}">${r.status}</td></tr>`;
+    const dNote = r.roadAddD > 0.01 ? `${r.currentD.toFixed(2)}m<br><span class="text-[9px] text-zinc-500">建物${r.boundaryD.toFixed(2)}+道路${r.roadAddD.toFixed(2)}</span>` : `${r.currentD.toFixed(2)}m`;
+    return `<tr class="border-t border-zinc-100"><td class="py-1.5 font-bold">${r.floor}F</td><td>${r.H.toFixed(2)}m</td><td>${r.requiredD.toFixed(2)}m</td><td>${dNote}</td><td class="font-black ${c}">${r.addSb.toFixed(2)}m</td><td class="font-bold ${c}">${r.status}</td></tr>`;
   }).join('') : '<tr><td colspan="6" class="py-2 text-center text-zinc-500">居宅開始階がありません。</td></tr>';
 
   resultBox.classList.remove('hidden');
@@ -1903,7 +1927,7 @@ function renderOneRoomLightCheck(finalExempt, zoneCode, basePolyForClip = null) 
       <div class="text-[10px] leading-relaxed mb-2">
         想定：25㎡ / 窓1.6×1.8m / 必要K ${ONE_ROOM_LIGHT.requiredK.toFixed(2)} / ${params.label}<br>
         対象：${edge.label} / 居宅開始階：${startFloor}階${startFloor === 2 ? '（1階車庫緩和あり）' : ''}<br>
-        簡易判定のため、居宅開始階のみをチェックします。この階がOKなら上階は原則OK扱いです。
+        簡易判定のため、居宅開始階のみをチェックします。この階がOKなら上階は原則OK扱いです。道路側は道路反対側境界線までの水平距離（建物後退＋道路幅員）で判定します。
       </div>
       <table class="w-full text-center bg-white/70 rounded-lg overflow-hidden">
         <thead class="text-[10px] text-zinc-500"><tr><th class="py-1">階</th><th>H</th><th>必要D</th><th>現在D</th><th>追加SB</th><th>判定</th></tr></thead>

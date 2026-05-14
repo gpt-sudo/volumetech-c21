@@ -1,0 +1,3517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CENTURY21用 BASE版 - 簡易建築ボリューム検討 v15 optimized</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/polygon-clipping@0.15.3/dist/polygon-clipping.umd.js"></script>
+<style>
+body { font-family: Inter, "Noto Sans JP", sans-serif; overscroll-behavior: none; background:#f4f4f5; }
+#canvas-container { position: relative; width: 100%; height: 100%; min-height: 520px; }
+canvas { display:block; border-radius:1rem; }
+.settings-scroll::-webkit-scrollbar, .chat-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.settings-scroll::-webkit-scrollbar-thumb, .chat-scroll::-webkit-scrollbar-thumb { background:#d4d4d8; border-radius:999px; }
+.boundary-label { color:#fff; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:700; white-space:nowrap; pointer-events:none; border:1px solid rgba(255,255,255,.35); backdrop-filter: blur(4px); }
+.boundary-road { background:rgba(59,130,246,.88); }
+.boundary-other { background:rgba(239,68,68,.88); }
+.boundary-minashi { background:rgba(139,92,246,.88); }
+.boundary-light { background:rgba(16,185,129,.92); }
+.vertex-icon div { width:14px; height:14px; background:#f59e0b; border:2px solid #fff; border-radius:50%; box-shadow:0 1px 3px rgba(0,0,0,.35); cursor:grab; transition:transform .1s; }
+.vertex-icon div:active { cursor:grabbing; transform:scale(1.15); }
+.input { width:100%; background:#fff; border:1px solid #e4e4e7; border-radius:.9rem; padding:.6rem .8rem; }
+.input:focus { outline:none; box-shadow:0 0 0 3px rgba(59,130,246,.12); border-color:#3b82f6; }
+
+.segment-control { display: inline-flex; background: rgba(228,228,231,0.6); backdrop-filter: blur(8px); padding: 4px; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.8); }
+.segment-btn { padding: 6px 16px; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 700; color: #52525b; transition: all 0.2s ease; border: none; background: transparent; cursor: pointer; }
+.segment-btn:hover { color: #18181b; }
+.segment-btn.active { background: #fff; color: #4f46e5; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+
+/* iPad / tablet display fix */
+html, body { height: 100%; height: 100dvh; }
+body { min-height: 100dvh; }
+main { min-width: 0; }
+#canvas-container { touch-action: none; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  aside.settings-scroll { width: 340px !important; flex: 0 0 340px !important; max-width: 340px !important; }
+  #canvas-container { min-height: 480px; }
+  #resultsPanel { left: 8px; right: 8px; bottom: 8px; }
+}
+@media (max-width: 767px) {
+  body > .flex-1.flex { flex-direction: column; }
+  aside.settings-scroll { width: 100% !important; height: 44vh; flex: 0 0 44vh !important; border-right: 0; border-bottom: 1px solid #e4e4e7; }
+  main { flex: 1 1 auto; min-height: 56vh; }
+  #canvas-container { min-height: 56vh; }
+}
+
+@media print { .print-hidden { display:none !important; } }
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-zinc-800">
+
+<header class="bg-white border-b border-zinc-200 px-5 py-3 flex items-center justify-between shrink-0 print-hidden">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-black tracking-tight text-zinc-800">CENTURY21用 <span class="text-amber-500 font-light">BASE版</span></h1>
+    <span class="text-[10px] text-zinc-400 border-l pl-3 border-zinc-300 hidden md:block pt-1 font-bold tracking-widest">Powered by Volume TECH / v18 panel close</span>
+  </div>
+</header>
+
+<div class="flex-1 flex overflow-hidden">
+  <aside class="w-full lg:w-[420px] bg-zinc-50 border-r border-zinc-200 overflow-y-auto settings-scroll p-4 space-y-4 print-hidden">
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4 space-y-4">
+      <div>
+        <div class="inline-block text-[10px] tracking-widest font-black uppercase bg-zinc-100 border border-zinc-200 px-2 py-1 rounded-md text-zinc-500 mb-2">Step 1</div>
+        <h2 class="text-lg font-black">計画地・面積</h2>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-zinc-500 block mb-1">計画地住所</label>
+        <input id="siteAddress" class="input text-sm" placeholder="例: 東京都港区...">
+        <p class="text-[10px] text-zinc-500 mt-1 mb-2">※入力した住所の周辺状況や敷地サイズを確認できます</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="openMapBtn" class="rounded-xl border border-zinc-300 bg-white py-2 font-bold text-xs flex items-center justify-center gap-1 hover:bg-zinc-50 transition-colors">📍 Googleマップ</button>
+          <button id="openEarthBtn" class="rounded-xl border border-zinc-300 bg-white py-2 font-bold text-xs flex items-center justify-center gap-1 hover:bg-zinc-50 transition-colors">🌍 Google Earth</button>
+        </div>
+        <div id="dynamicMapLinks" class="mt-2"></div>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-red-600 block mb-1 text-center">公簿 敷地面積</label>
+        <div class="flex items-center gap-2">
+          <input type="number" id="inputSiteArea" class="input text-2xl font-black text-center bg-zinc-100 text-zinc-500 cursor-not-allowed border-transparent focus:ring-0" value="300" step="0.1" min="0" readonly>
+          <span class="font-bold text-zinc-500">m²</span>
+        </div>
+        <p class="text-[10px] text-zinc-500 text-center mt-1">※Step 2の土地形状から自動計算されます</p>
+        <div class="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg text-center hidden" id="effectiveAreaBox">
+          <div class="text-[10px] font-bold text-red-700">有効敷地面積 (セットバック控除後)</div>
+          <div class="font-black text-red-600"><span id="effectiveSiteArea">300.0</span> m²</div>
+        </div>
+      </div>
+      <div>
+        <label class="text-[11px] font-bold text-zinc-500 block mb-2 text-center">真北方向 (°)</label>
+        <div class="flex items-center gap-3">
+          <div id="northDial" class="relative w-10 h-10 rounded-full border border-zinc-300 bg-white flex items-center justify-center cursor-pointer shrink-0">
+            <div id="northNeedle" class="absolute w-0.5 h-[42%] bg-red-500 origin-bottom" style="bottom:50%;"></div>
+          </div>
+          <input type="number" id="northAngle" class="input text-center font-mono" value="0">
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4 space-y-4">
+      <div>
+        <div class="inline-block text-[10px] tracking-widest font-black uppercase bg-zinc-100 border border-zinc-200 px-2 py-1 rounded-md text-zinc-500 mb-2">Step 2</div>
+        <h2 class="text-lg font-black">土地形状 <span class="text-red-500 text-sm">(赤線)</span></h2>
+        <p class="text-[11px] text-zinc-500 mt-1">入力は「下絵読込」と「衛星地図入力」をメインにし、間口・奥行は補助表示にしています。</p>
+      </div>
+
+      <div class="rounded-3xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4 space-y-3 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-black tracking-widest text-blue-700 uppercase">メイン入力</div>
+            <div class="text-base font-black text-zinc-900">下絵・地図から敷地を入力</div>
+            <div class="text-[11px] text-zinc-500 mt-1">現地資料や衛星地図を使って、実際の形状を優先して入力します。</div>
+          </div>
+          <div class="rounded-full bg-blue-100 text-blue-700 text-[10px] font-black px-3 py-1 shrink-0">推奨</div>
+        </div>
+
+        <button id="openMapMeasureBtn" class="w-full rounded-2xl border-2 border-amber-300 bg-amber-50 py-4 font-black text-amber-700 text-[15px] shadow-sm hover:bg-amber-100 transition">衛星地図から多角形敷地をマッピング入力</button>
+
+        <div class="rounded-2xl border-2 border-blue-200 bg-white p-3">
+          <label class="flex items-center justify-between cursor-pointer group gap-3">
+            <div class="flex flex-col">
+              <span class="text-base font-black flex items-center gap-1.5 text-zinc-900 group-hover:text-blue-600 transition-colors">🖼️ 測量図・公図を読込む (下絵)</span>
+              <span class="text-[11px] text-zinc-500 mt-1">画像を背景に敷いて、敷地形状をなぞって入力できます</span>
+            </div>
+            <input type="checkbox" id="traceToggle" class="w-5 h-5 text-blue-600 rounded border-zinc-300 cursor-pointer shrink-0">
+          </label>
+          <div id="traceSettings" class="hidden mt-3 space-y-3 bg-blue-50/60 border border-blue-200 rounded-2xl p-3">
+            <input type="file" id="traceImageUpload" accept="image/*" class="block w-full text-xs text-zinc-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer transition-colors">
+            <button id="openImageMeasureBtn" class="hidden w-full rounded-xl border border-blue-300 bg-blue-500 py-2.5 font-bold text-white shadow-sm hover:bg-blue-600 transition-all flex items-center justify-center gap-1.5 text-sm">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              画像上で敷地をなぞってマッピング入力
+            </button>
+            <div class="bg-white p-2.5 rounded-xl border border-zinc-200 space-y-2.5">
+              <input type="hidden" id="traceScale" value="1">
+              <input type="hidden" id="traceRot" value="0">
+              <input type="hidden" id="traceX" value="0">
+              <input type="hidden" id="traceZ" value="0">
+              <div class="pt-1">
+                <label class="text-[10px] font-bold text-zinc-600 flex justify-between mb-1"><span>下絵の濃さ (不透明度)</span><span id="traceOpacityVal">50%</span></label>
+                <input type="range" id="traceOpacity" class="w-full accent-blue-600" min="0.1" max="1" step="0.05" value="0.5">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+        <div class="text-[11px] font-black tracking-widest text-zinc-500 uppercase mb-2">補助入力</div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="text-[11px] font-bold text-zinc-400 block mb-1 text-center">間口 W</label>
+            <input type="number" id="siteWidth" class="input text-center font-semibold text-sm h-10" value="15" step="0.1" min="0">
+          </div>
+          <div>
+            <label class="text-[11px] font-bold text-zinc-400 block mb-1 text-center">奥行 D</label>
+            <input type="number" id="siteDepth" class="input text-center font-semibold text-sm h-10" value="20" step="0.1" min="0">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4 space-y-4">
+      <div>
+        <div class="inline-block text-[10px] tracking-widest font-black uppercase bg-zinc-100 border border-zinc-200 px-2 py-1 rounded-md text-zinc-500 mb-2">Step 3</div>
+        <h2 class="text-lg font-black">道路位置 <span class="text-blue-500 text-sm">(青線)</span></h2>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-blue-700 block mb-1 text-center">前面道路 幅員</label>
+        <div class="flex items-center gap-2">
+          <input type="number" id="roadWidth" class="input text-center font-black text-xl border-blue-200" value="6" step="0.1" min="0">
+          <span class="font-bold text-zinc-500">m</span>
+        </div>
+      </div>
+      <div class="border border-zinc-200 rounded-2xl overflow-hidden mt-3">
+        <label class="flex items-center justify-between p-3 bg-zinc-50 cursor-pointer">
+          <span class="font-bold text-sm">第2道路（角地等）を追加</span>
+          <input type="checkbox" id="hasRoad2" class="w-4 h-4">
+        </label>
+        <div id="road2Settings" class="hidden p-3 space-y-3 border-t border-zinc-200">
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="text-[11px] font-bold text-zinc-500 block mb-1 text-center">幅員</label><input type="number" id="road2Width" class="input text-center" value="4" step="0.1" min="0"></div>
+            <div><label class="text-[11px] font-bold text-zinc-500 block mb-1 text-center">接道位置</label><select id="road2Pos" class="input text-center"><option value="left">左側 (-X)</option><option value="right">右側 (+X)</option><option value="back" selected>背面 (+Z)</option></select></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4 space-y-4">
+      <div>
+        <div class="inline-block text-[10px] tracking-widest font-black uppercase bg-zinc-100 border border-zinc-200 px-2 py-1 rounded-md text-zinc-500 mb-2">Step 4</div>
+        <h2 class="text-lg font-black">境界線後退・セットバック</h2>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="border border-blue-200 bg-blue-50/50 rounded-xl p-2">
+          <label class="text-[11px] font-bold text-blue-700 block mb-1 text-center">道路後退 (前面)</label>
+          <div class="flex items-center justify-center gap-1">
+            <input type="number" id="setbackFront" class="input text-center font-bold border-blue-200 !py-1" value="0" step="0.1" min="0">
+            <span class="text-[10px] font-bold text-zinc-500">m</span>
+          </div>
+          <div id="road2koHint1" class="hidden text-[10px] text-red-600 font-bold text-center mt-1">※2項道路(中心2m)</div>
+        </div>
+        <div class="border border-blue-200 bg-blue-50/50 rounded-xl p-2" id="road2Box">
+          <label class="text-[11px] font-bold text-blue-700 block mb-1 text-center">道路後退 (第2)</label>
+          <div class="flex items-center justify-center gap-1">
+            <input type="number" id="setbackRoad2" class="input text-center font-bold border-blue-200 !py-1" value="0" step="0.1" min="0">
+            <span class="text-[10px] font-bold text-zinc-500">m</span>
+          </div>
+          <div id="road2koHint2" class="hidden text-[10px] text-red-600 font-bold text-center mt-1">※2項道路(中心2m)</div>
+        </div>
+      </div>
+      <div class="bg-zinc-50 border border-zinc-200 rounded-2xl p-3">
+        <label class="text-xs font-bold text-zinc-500 block mb-2 text-center">その他の隣地境界後退</label>
+        <div id="adjSetbackInputs"></div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4 space-y-4">
+      <div>
+        <div class="inline-block text-[10px] tracking-widest font-black uppercase bg-zinc-100 border border-zinc-200 px-2 py-1 rounded-md text-zinc-500 mb-2">Step 5</div>
+        <h2 class="text-lg font-black">建物ボリューム設定</h2>
+      </div>
+      <div>
+        <label class="text-xs font-bold text-zinc-500 block mb-1">用途地域</label>
+        <select id="zoneType" class="input font-bold">
+          <option value="dai1teiso">第一種低層住居専用地域</option>
+          <option value="dai2teiso">第二種低層住居専用地域</option>
+          <option value="dai1chuko">第一種中高層住居専用地域</option>
+          <option value="dai2chuko">第二種中高層住居専用地域</option>
+          <option value="dai1jukyo">第一種住居地域</option>
+          <option value="dai2jukyo">第二種住居地域</option>
+          <option value="junjukyo">準住居地域</option>
+          <option value="kinrin">近隣商業地域</option>
+          <option value="shogyo" selected>商業地域</option>
+          <option value="junkogyo">準工業地域</option>
+          <option value="kogyo">工業地域</option>
+          <option value="kogyosenyo">工業専用地域</option>
+        </select>
+        <p id="zoneAutoHint" class="text-[11px] text-zinc-500 mt-2 leading-relaxed"></p>
+        
+        <div class="mt-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-2">
+          <label class="flex items-center gap-2 font-bold text-zinc-700 cursor-pointer">
+            <input type="checkbox" id="applyNorthSlant" checked class="w-4 h-4 rounded text-blue-600 border-zinc-300">
+            北側斜線制限を適用する
+          </label>
+        </div>
+
+        <button id="legalCheckBtn" class="mt-3 w-full rounded-xl bg-zinc-100 border border-zinc-300 text-zinc-700 py-2 text-xs font-bold hover:bg-zinc-200 transition-all flex items-center justify-center gap-1.5">
+          ✨ AI法規リスク・追加制限チェック
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="border border-zinc-200 rounded-2xl p-3">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-bold text-zinc-500">指定建ぺい率</label>
+            <div class="flex gap-2 text-[11px]">
+              <label class="flex items-center gap-1"><input type="checkbox" id="cornerBcrToggle">角地緩和</label>
+            </div>
+          </div>
+          <div class="flex items-center gap-2"><input type="number" id="bcr" class="input text-center text-lg font-black text-blue-700" value="60" step="10" min="0" max="100"><span class="font-bold text-zinc-500">%</span></div>
+          <div class="text-right text-[11px] text-zinc-500 mt-2">適用上限: <strong id="actualBcrValLabel" class="text-blue-700">60</strong>%</div>
+        </div>
+        <div class="border border-zinc-200 rounded-2xl p-3">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-bold text-zinc-500">指定容積率</label>
+            <label class="flex items-center gap-1 text-[11px]"><input type="checkbox" id="autoFarToggle" checked>幅員制限</label>
+          </div>
+          <div class="flex items-center gap-2"><input type="number" id="far" class="input text-center text-lg font-black text-blue-700" value="400" step="10" min="0"><span class="font-bold text-zinc-500">%</span></div>
+          <div class="text-right text-[11px] text-zinc-500 mt-2">適用上限: <strong id="actualFarVal" class="text-blue-700">400</strong>%</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-bold text-zinc-500 block mb-1">建物の配置寄せ</label>
+          <select id="bldgAlign" class="input font-bold text-center">
+            <option value="center" selected>中央寄せ</option>
+            <option value="back">背面寄せ</option>
+            <option value="front">前面寄せ</option>
+            <option value="left">左寄せ</option>
+            <option value="right">右寄せ</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-zinc-500 block mb-1">総階数</label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="floorCount" class="input text-center text-lg font-black text-indigo-700" value="6" step="1" min="1">
+            <span class="font-bold text-zinc-500 text-sm">階</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-zinc-50 border border-zinc-200 rounded-2xl p-3">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs font-bold text-zinc-700">1階車庫・駐輪場 面積 (m²)</label>
+          <label class="text-[11px] font-bold flex items-center gap-1"><input type="checkbox" id="autoGarageToggle">自動計算</label>
+        </div>
+        <input type="number" id="garageArea" class="input text-lg font-mono" value="0" step="0.1" min="0">
+        <div class="text-right text-[11px] text-zinc-500 mt-2">実効控除: <strong id="actualExemptionVal" class="text-blue-700">0.00</strong> m²</div>
+      </div>
+
+      <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 space-y-2">
+        <div>
+          <label class="text-xs font-black text-emerald-700 block mb-1 text-center">ワンルーム採光チェック</label>
+          <p class="text-[10px] text-emerald-700/80 text-center leading-relaxed">固定条件：25㎡ / 窓1.6m×1.8m / 居宅開始階のみ簡易判定</p>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1 text-center">採光対象辺</label>
+          <select id="lightEdgeSelect" class="input text-center text-sm"><option value="">辺を選択</option></select>
+        </div>
+        <button id="runLightCheckBtn" class="w-full rounded-xl bg-emerald-600 text-white py-2 font-black text-xs hover:bg-emerald-700 transition-colors">ワンルーム採光チェック</button>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-zinc-200 p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-black tracking-widest text-indigo-700 uppercase">保存・履歴</h2>
+      </div>
+      <div class="space-y-2">
+        <button id="saveDataBtn" class="w-full rounded-xl bg-indigo-600 text-white font-bold text-sm py-2.5">現在の入力状態を保存</button>
+        <div class="flex gap-2">
+          <select id="historySelect" class="input text-sm flex-1">
+            <option value="">履歴から復元...</option>
+          </select>
+          <button id="loadDataBtn" class="rounded-xl bg-zinc-900 text-white px-4 font-bold text-sm">読込</button>
+          <button id="deleteDataBtn" class="rounded-xl border border-red-200 text-red-600 px-3 font-bold text-sm bg-white">削除</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-violet-50 border border-violet-200 rounded-3xl p-4">
+      <button id="generateAiBtn" class="w-full rounded-2xl bg-zinc-900 text-white py-4 font-black">AI事業企画レポート生成</button>
+    </section>
+  </aside>
+
+  <main class="flex-1 relative overflow-hidden">
+    <div class="absolute top-4 left-4 z-20 flex items-center gap-2 print-hidden">
+      <div class="segment-control shadow-sm">
+        <button id="perspViewBtn" class="segment-btn active">3D View</button>
+        <button id="planViewBtn" class="segment-btn">平面・配置図</button>
+      </div>
+
+      <div id="floorSelectPanelMain" class="hidden items-center gap-2 bg-white/90 backdrop-blur border border-zinc-200 rounded-xl px-2 h-[36px] shadow-sm">
+        <select id="floorSelectMain" class="bg-transparent text-xs font-bold text-zinc-800 outline-none cursor-pointer pl-1">
+          <option value="all">配置図 (全景)</option>
+        </select>
+        <div id="floorAreaDisplayMain" class="hidden border-l border-zinc-200 pl-2 py-1 text-[11px] font-bold text-blue-600 whitespace-nowrap"></div>
+      </div>
+
+      <div class="relative">
+        <button id="viewSettingsBtn" class="h-[36px] px-3 bg-white/90 backdrop-blur border border-zinc-200 rounded-xl shadow-sm text-xs font-bold text-zinc-600 hover:bg-zinc-50 flex items-center gap-1.5 transition-colors">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          表示設定
+        </button>
+        
+        <div id="displayToggles" class="hidden absolute top-full left-0 mt-2 w-48 bg-white/95 backdrop-blur rounded-2xl border border-zinc-200 p-3 flex flex-col gap-3 shadow-xl">
+          <label class="text-xs font-bold text-zinc-700 flex items-center gap-2"><input type="checkbox" id="toggleRoadSlant" checked class="accent-blue-600">道路斜線表示</label>
+          <label class="text-xs font-bold text-zinc-700 flex items-center gap-2"><input type="checkbox" id="toggleAdjSlant" checked class="accent-red-500">隣地斜線表示</label>
+          <label class="text-xs font-bold text-zinc-700 flex items-center gap-2"><input type="checkbox" id="toggleNorthSlant" checked class="accent-sky-500">北側斜線 <span class="text-[10px] text-zinc-500 font-normal">(水色)</span></label>
+          <label class="text-xs font-bold text-zinc-700 flex items-center gap-2"><input type="checkbox" id="toggleSetbackLine" checked class="accent-purple-500">境界後退線・ラベル</label>
+          <div class="border-t border-zinc-200 pt-2 flex items-center justify-between gap-2">
+            <label class="text-[11px] font-bold text-zinc-700 flex items-center gap-1.5"><input type="checkbox" id="toggleModuleGrid" class="accent-emerald-500">3.5mグリッド</label>
+            <div class="flex items-center gap-1"><input type="number" id="gridRotation" class="input !w-12 !py-0.5 !px-1 text-center text-[10px]" value="0" step="5"><span class="text-[10px] text-zinc-500">°</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="northArrowPanel" class="absolute top-4 right-4 z-20 pointer-events-none print-hidden">
+      <div class="w-12 h-12 rounded-full bg-white/90 backdrop-blur border border-zinc-200 shadow flex items-center justify-center relative">
+        <div id="canvasNorthArrow" class="absolute inset-0 flex items-center justify-center origin-center">
+          <svg width="12" height="26" viewBox="0 0 12 26" fill="none">
+            <path d="M6 0L12 13L6 10.5L0 13L6 0Z" fill="#ef4444"/>
+            <path d="M6 26L12 13L6 15.5L0 13L6 26Z" fill="#d4d4d8"/>
+          </svg>
+        </div>
+        <span class="absolute top-1 text-[8px] font-black">N</span>
+      </div>
+    </div>
+    
+    <button id="chatFabBtn" class="absolute top-5 right-20 z-40 flex items-center gap-1.5 rounded-full bg-indigo-600 text-white shadow-md border border-indigo-500 print-hidden hover:bg-indigo-700 hover:scale-105 transition-all duration-300 px-3 py-1.5 group">
+      <div class="relative flex items-center justify-center">
+        <span class="text-[13px] group-hover:animate-pulse">✨</span>
+        <span class="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+        </span>
+      </div>
+      <span class="font-bold text-xs tracking-wide">AIアシスタント</span>
+    </button>
+
+    <div id="canvas-container" class="h-full"></div>
+
+    <div id="map-view-wrapper" class="hidden absolute inset-0 bg-zinc-100 z-10">
+      <div id="leaflet-map" class="w-full h-full"></div>
+      <div class="absolute bottom-6 right-6 z-[1000] w-[280px] bg-white/95 backdrop-blur border border-zinc-200 rounded-2xl shadow-xl p-4 space-y-3 print-hidden">
+        <div class="flex items-center justify-between border-b border-zinc-100 pb-2">
+          <h3 class="font-black text-sm text-amber-600">地図計測ツール</h3>
+          <button id="clearMapBtn" class="text-xs font-bold text-zinc-600">クリア</button>
+        </div>
+        <div class="text-[11px] text-zinc-500 font-bold">最初の1辺が前面道路です。各辺番号を地図上に表示します。第2道路は表示された辺番号から選択してください。</div>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div><div class="text-[11px] text-zinc-500 font-bold">面積</div><div class="font-black"><span id="mapAreaDisplay">0.0</span></div></div>
+          <div><div class="text-[11px] text-zinc-500 font-bold">間口</div><div class="font-black"><span id="mapWidthDisplay">0.0</span></div></div>
+          <div><div class="text-[11px] text-zinc-500 font-bold">奥行</div><div class="font-black"><span id="mapDepthDisplay">0.0</span></div></div>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">公図/謄本の面積に合わせて補正</label>
+          <div class="flex gap-2">
+            <input type="number" id="targetAreaInput" class="input text-center text-sm" placeholder="目標面積 m²" min="0">
+            <button id="adjustAreaBtn" disabled class="rounded-xl bg-amber-500 text-white px-3 text-sm font-bold disabled:opacity-50">補正</button>
+          </div>
+        </div>
+        <div class="border-t border-zinc-100 pt-2">
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">道路幅員 計測 (2点クリック)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="measureMapRoad1Btn" class="rounded-xl border border-blue-200 bg-white text-blue-600 px-2 py-1.5 text-[10px] font-bold hover:bg-blue-50 transition-colors">前面道路</button>
+            <button id="measureMapRoad2Btn" class="rounded-xl border border-blue-200 bg-white text-blue-600 px-2 py-1.5 text-[10px] font-bold hover:bg-blue-50 transition-colors">第2道路</button>
+          </div>
+          <div id="measureMapRoadHint" class="text-[10px] text-red-500 mt-1 hidden font-bold text-center">地図上で道路の幅(2点)をクリック</div>
+        </div>
+        <div class="border-t border-zinc-100 pt-2">
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">第2道路の指定</label>
+          <select id="mapRoad2Select" class="input text-sm"><option value="-1">指定なし</option></select>
+        </div>
+        <button id="applyMapBtn" disabled class="w-full rounded-xl bg-zinc-900 text-white py-3 font-bold disabled:opacity-50">この形状を3D敷地に反映</button>
+      </div>
+    </div>
+
+    <div id="image-view-wrapper" class="hidden absolute inset-0 bg-zinc-800 z-10">
+      <div id="image-leaflet-map" class="w-full h-full"></div>
+      <div class="absolute bottom-6 right-6 z-[1000] w-[280px] bg-white/95 backdrop-blur border border-zinc-200 rounded-2xl shadow-xl p-4 space-y-3 print-hidden">
+        <div class="flex items-center justify-between border-b border-zinc-100 pb-2">
+          <h3 class="font-black text-sm text-blue-600">画像計測ツール</h3>
+          <button id="clearImageMapBtn" class="text-xs font-bold text-zinc-600">クリア</button>
+        </div>
+        <div class="text-[11px] text-zinc-500 font-bold">最初の1辺が前面道路です。各辺番号を画像上に表示します。第2道路は表示された辺番号から選択してください。画像の上方向を真北(0°)として反映します。</div>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div><div class="text-[11px] text-zinc-500 font-bold">面積 <span id="imageScaleAlert" class="text-red-500">(面積補正必須)</span></div><div class="font-black"><span id="imageMapAreaDisplay">0.0</span></div></div>
+          <div><div class="text-[11px] text-zinc-500 font-bold">間口</div><div class="font-black"><span id="imageMapWidthDisplay">0.0</span></div></div>
+          <div><div class="text-[11px] text-zinc-500 font-bold">奥行</div><div class="font-black"><span id="imageMapDepthDisplay">0.0</span></div></div>
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">公図/謄本の面積に合わせて補正</label>
+          <div class="flex gap-2">
+            <input type="number" id="targetImageAreaInput" class="input text-center text-sm" placeholder="目標面積 m²" min="0">
+            <button id="adjustImageAreaBtn" disabled class="rounded-xl bg-blue-500 text-white px-3 text-sm font-bold disabled:opacity-50">補正</button>
+          </div>
+        </div>
+        <div class="border-t border-zinc-100 pt-2">
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">道路幅員 計測 (補正後に2点クリック)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="measureRoad1Btn" class="rounded-xl border border-blue-200 bg-white text-blue-600 px-2 py-1.5 text-[10px] font-bold hover:bg-blue-50 transition-colors">前面道路</button>
+            <button id="measureRoad2Btn" class="rounded-xl border border-blue-200 bg-white text-blue-600 px-2 py-1.5 text-[10px] font-bold hover:bg-blue-50 transition-colors">第2道路</button>
+          </div>
+          <div id="measureRoadHint" class="text-[10px] text-red-500 mt-1 hidden font-bold text-center">画像上で道路の幅(2点)をクリック</div>
+        </div>
+        <div class="border-t border-zinc-100 pt-2">
+          <label class="text-[11px] font-bold text-zinc-600 block mb-1">第2道路の指定</label>
+          <select id="imageMapRoad2Select" class="input text-sm"><option value="-1">指定なし</option></select>
+        </div>
+        <button id="applyImageMapBtn" disabled class="w-full rounded-xl bg-zinc-900 text-white py-3 font-bold disabled:opacity-50">この形状を3D敷地に反映</button>
+      </div>
+    </div>
+
+    <button id="showResultsPanelBtn" class="hidden absolute bottom-4 right-4 z-30 rounded-full bg-zinc-900 text-white px-4 py-2 text-xs font-black shadow-xl border border-white/30 print-hidden hover:bg-zinc-700 transition-colors">算定結果を表示</button>
+
+    <div id="resultsPanel" class="absolute bottom-4 left-4 right-4 z-20 bg-white/95 backdrop-blur rounded-2xl border border-zinc-200 p-3 print-hidden">
+      <button id="hideResultsPanelBtn" class="absolute top-2 right-2 z-30 w-7 h-7 rounded-full bg-white/95 border border-zinc-200 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 shadow-sm font-black leading-none" title="算定結果パネルを閉じる">×</button>
+      <div class="flex flex-col md:flex-row md:items-center justify-between mb-2 pb-2 border-b border-zinc-100 gap-2 pr-8">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <h2 class="text-xs font-bold tracking-widest text-zinc-500 uppercase">リアルタイム算定結果</h2>
+            <span class="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-bold flex items-center gap-0.5"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>バッジクリックでAI解説</span>
+          </div>
+          <div id="relaxationBadges" class="flex gap-1.5 flex-wrap"></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-center mb-2">
+        <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-2"><div class="text-[11px] text-zinc-500 font-bold">建築面積</div><div class="font-black"><span id="buildingArea">0.00</span> m²</div></div>
+        <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-2"><div class="text-[11px] text-zinc-500 font-bold">総延床面積</div><div class="font-black"><span id="grossArea">0.00</span> m²</div></div>
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-2"><div class="text-[11px] text-blue-500 font-bold">建ぺい率</div><div class="font-black text-blue-700"><span id="resultBCR">0.00</span> %</div></div>
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-2"><div class="text-[11px] text-blue-500 font-bold">容積率</div><div class="font-black text-blue-700"><span id="resultFAR">0.00</span> %</div></div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2"><div class="text-[11px] text-indigo-500 font-bold">実現階数</div><div class="font-black text-indigo-700"><span id="resultFloorCount">0</span> F</div></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+        <div class="bg-red-50 border border-red-100 rounded-xl p-2"><div class="text-[11px] text-red-600 font-bold">道路後退(提供)面積</div><div class="font-black text-red-700"><span id="setbackAreaResult">0.00</span> m²</div></div>
+        <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-2"><div class="text-[11px] text-zinc-500 font-bold">建物最大幅</div><div class="font-black"><span id="bldgMaxWidth">0.00</span> m</div><div id="bldgMaxWidthSpan" class="text-[10px] text-emerald-600 font-bold min-h-[12px]"></div></div>
+        <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-2"><div class="text-[11px] text-zinc-500 font-bold">建物最大奥行</div><div class="font-black"><span id="bldgMaxDepth">0.00</span> m</div><div id="bldgMaxDepthSpan" class="text-[10px] text-emerald-600 font-bold min-h-[12px]"></div></div>
+        <div class="bg-zinc-50 border border-zinc-200 rounded-xl p-2"><div class="text-[11px] text-zinc-500 font-bold">建物最大高さ</div><div class="font-black"><span id="bldgMaxHeight">0.00</span> m</div></div>
+      </div>
+      <div class="mt-3 border-t border-zinc-100 pt-3">
+        <button id="predictCostBtn" class="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2 text-xs font-bold shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-1.5">
+          ✨ AI概算コスト＆収益予測
+        </button>
+        <div id="costPredictionResult" class="hidden mt-2 p-3 bg-blue-50/50 border border-blue-100 rounded-xl text-[11px] text-zinc-700 leading-relaxed max-h-40 overflow-y-auto"></div>
+      </div>
+      <div id="oneRoomLightResult" class="hidden mt-3 border-t border-zinc-100 pt-3 text-[11px] text-zinc-700"></div>
+    </div>
+  </main>
+</div>
+
+<div id="aiModal" class="fixed inset-0 bg-zinc-900/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+  <div class="w-full max-w-4xl bg-white rounded-3xl border border-zinc-200 shadow-2xl overflow-hidden">
+    <div class="bg-zinc-900 text-white p-5 flex items-center justify-between">
+      <h2 class="text-xl font-black">AI建築企画・斜線分析レポート</h2>
+      <div class="flex items-center gap-2">
+        <button id="aiModalLawBtn" class="rounded-xl bg-zinc-800 border border-zinc-700 px-3 py-2 text-xs font-bold">法規確認</button>
+        <button id="aiModalMapBtn" class="rounded-xl bg-indigo-600 border border-indigo-500 px-3 py-2 text-xs font-bold">3Dアース</button>
+        <button id="closeAiModalBtn" class="rounded-full hover:bg-white/10 w-10 h-10 flex items-center justify-center">✕</button>
+      </div>
+    </div>
+    <div class="bg-zinc-50 p-6 max-h-[75vh] overflow-y-auto">
+      <div id="aiLoading" class="py-20 flex flex-col items-center gap-4">
+        <div class="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin"></div>
+        <p class="font-bold text-zinc-600">立地とボリュームを分析中...</p>
+      </div>
+      <div id="aiResultContent" class="hidden prose max-w-none text-zinc-700"></div>
+    </div>
+  </div>
+</div>
+
+<div id="chatWindow" class="hidden fixed bottom-24 right-6 z-40 w-[360px] h-[500px] bg-white rounded-2xl border border-zinc-200 shadow-2xl overflow-hidden print-hidden flex-col">
+  <div class="bg-indigo-600 text-white p-4 flex items-center justify-between">
+    <strong class="text-sm">AI アシスタント</strong>
+    <button id="closeChatBtn" class="rounded-full hover:bg-indigo-700 w-8 h-8">✕</button>
+  </div>
+  <div id="chatMessages" class="flex-1 overflow-y-auto chat-scroll p-4 bg-zinc-50 flex flex-col gap-3 text-sm">
+    <div class="flex flex-col items-start max-w-[85%]">
+      <span class="text-[10px] text-zinc-500 font-bold mb-1 ml-1">AIアシスタント</span>
+      <div class="bg-white border border-zinc-200 rounded-2xl rounded-tl-sm shadow-sm p-3 leading-relaxed">こんにちは。ツールの使い方や建築法規について質問できます。</div>
+    </div>
+  </div>
+  <div class="p-3 bg-white border-t border-zinc-200 flex gap-2">
+    <input id="chatInput" class="flex-1 input bg-zinc-100" placeholder="メッセージを入力...">
+    <button id="sendChatBtn" class="w-10 rounded-xl bg-indigo-600 text-white">➤</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const apiKey = ""; // Gemini APIキーを入れるとAI通信、空欄ならローカル簡易レポートで動作
+const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
+const polygonClippingLib = window.polygonClipping || null;
+
+let scene, camera, cameraPersp, cameraOrtho, renderer, controls, labelRenderer;
+let ambientLight, directionalLight;
+let siteMesh, roadMesh, road2Mesh, traceMesh = null, traceTexture = null;
+let volumeMeshes = [], allFloorsData = [];
+let orthoEdgesGroup, siteLabelsGroup, moduleGridGroup;
+let latestLightEdges = [], lightCheckActive = false;
+let inputs = {}, results = {}, viewBtns = {};
+let customSitePolygon = null, customSiteRoad2Index = -1;
+
+let leafletMap = null, imageLeafletMap = null;
+let mapPolygonLayer = null, imagePolygonLayer = null;
+let mapMarkersLayer = null, imageMarkersLayer = null;
+let mapPoints = [], imageMapPoints = [];
+let mapMarkers = [], imageMapMarkers = [];
+let mapStats = { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+let imageMapStats = { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+let vertexIcon = null;
+
+let uploadedImageUrl = null;
+let uploadedImageWidth = 0, uploadedImageHeight = 0;
+let imageScaleFactor = 1.0, isImageScaleAdjusted = false;
+
+let imageMeasuringMode = 'polygon';
+let tempRoadPoints = [];
+let tempRoadLayer = null;
+
+let mapMeasuringMode = 'polygon';
+let tempMapRoadPoints = [];
+let tempMapRoadLayer = null;
+
+const HISTORY_KEY = 'volumeTechHistory';
+const DEFAULT_CITY_KEY = 'saga';
+const ZONE_MASTER = {
+  dai1teiso:{label:'第一種低層住居専用地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:null,adjSlope:null,northHeight:5,northSlope:1.25,shadowReg:'7m超'},
+  dai2teiso:{label:'第二種低層住居専用地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:null,adjSlope:null,northHeight:5,northSlope:1.25,shadowReg:'7m超'},
+  dai1chuko:{label:'第一種中高層住居専用地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:20,adjSlope:1.25,northHeight:10,northSlope:1.25,shadowReg:'10m超'},
+  dai2chuko:{label:'第二種中高層住居専用地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:20,adjSlope:1.25,northHeight:10,northSlope:1.25,shadowReg:'10m超'},
+  dai1jukyo:{label:'第一種住居地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:20,adjSlope:1.25,northHeight:null,northSlope:null,shadowReg:'10m超'},
+  dai2jukyo:{label:'第二種住居地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:20,adjSlope:1.25,northHeight:null,northSlope:null,shadowReg:'10m超'},
+  junjukyo:{label:'準住居地域',group:'residential',roadSlope:1.25,farRoadCoeff:0.4,adjHeight:20,adjSlope:1.25,northHeight:null,northSlope:null,shadowReg:'10m超'},
+  kinrin:{label:'近隣商業地域',group:'nonResidential',roadSlope:1.5,farRoadCoeff:0.6,adjHeight:31,adjSlope:2.5,northHeight:null,northSlope:null,shadowReg:'10m超(条件付)'},
+  shogyo:{label:'商業地域',group:'nonResidential',roadSlope:1.5,farRoadCoeff:0.6,adjHeight:31,adjSlope:2.5,northHeight:null,northSlope:null,shadowReg:null},
+  junkogyo:{label:'準工業地域',group:'nonResidential',roadSlope:1.5,farRoadCoeff:0.6,adjHeight:31,adjSlope:2.5,northHeight:null,northSlope:null,shadowReg:'10m超(条件付)'},
+  kogyo:{label:'工業地域',group:'nonResidential',roadSlope:1.5,farRoadCoeff:0.6,adjHeight:31,adjSlope:2.5,northHeight:null,northSlope:null,shadowReg:null},
+  kogyosenyo:{label:'工業専用地域',group:'nonResidential',roadSlope:1.5,farRoadCoeff:0.6,adjHeight:31,adjSlope:2.5,northHeight:null,northSlope:null,shadowReg:null}
+};
+const DESIGNATION_MASTER = {
+  saga: {
+    dai1teiso:{bcr:50,far:80}, dai2teiso:{bcr:50,far:80}, dai1chuko:{bcr:60,far:200}, dai2chuko:{bcr:60,far:200},
+    dai1jukyo:{bcr:60,far:200}, dai2jukyo:{bcr:60,far:200}, junjukyo:{bcr:60,far:200}, kinrin:{bcr:80,far:300},
+    shogyo:{bcr:80,far:400}, junkogyo:{bcr:60,far:200}, kogyo:{bcr:60,far:200}, kogyosenyo:{bcr:60,far:200}
+  }
+};
+
+const q = id => document.getElementById(id);
+const getVal = (id, fallback = 0) => {
+  const el = q(id);
+  if (!el) return fallback;
+  const val = parseFloat(el.value);
+  return isNaN(val) ? fallback : val;
+};
+
+function escapeHtml(str='') {
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function renderChatText(text='') { return escapeHtml(text).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>'); }
+function renderReportMarkdown(text='') {
+  const safe = escapeHtml(text).replace(/\r\n/g,'\n');
+  return safe
+    .replace(/^###\s+(.*?)$/gm, '<h3 class="text-lg font-bold text-zinc-800 mt-6 mb-2 border-l-4 border-indigo-500 pl-3">$1</h3>')
+    .replace(/^##\s+(.*?)$/gm, '<h2 class="text-xl font-black text-indigo-700 mt-8 mb-4 border-b border-zinc-200 pb-2">$1</h2>')
+    .replace(/^#\s+(.*?)$/gm, '<h1 class="text-2xl font-black text-zinc-900 mt-8 mb-4">$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-zinc-900">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+    .replace(/^\s*[\*\-]\s+(.*?)$/gm, '<li class="ml-6 list-disc my-1">$1</li>')
+    .replace(/\n/g,'<br>');
+}
+function showToast(message, isError=false) {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-5 right-5 z-[100] px-4 py-3 rounded-xl shadow-lg font-bold text-sm transition-all duration-300 -translate-y-16 opacity-0 ${isError ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white'}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.remove('-translate-y-16','opacity-0'), 10);
+  setTimeout(() => {
+    toast.classList.add('-translate-y-16','opacity-0');
+    setTimeout(() => toast.remove(), 300);
+  }, 2600);
+}
+function safeRemove(obj) {
+  if (!obj) return;
+  if (obj.children && obj.children.length) {
+    [...obj.children].forEach(child => safeRemove(child));
+  }
+  if (obj.element && typeof obj.element.remove === 'function') obj.element.remove();
+  if (obj.geometry && typeof obj.geometry.dispose === 'function') obj.geometry.dispose();
+  if (obj.material) {
+    if (Array.isArray(obj.material)) obj.material.forEach(m => m && typeof m.dispose === 'function' && m.dispose());
+    else if (typeof obj.material.dispose === 'function') obj.material.dispose();
+  }
+  if (obj.parent && typeof obj.parent.remove === 'function') obj.parent.remove(obj);
+  else if (scene) scene.remove(obj);
+}
+
+function disposeGroupChildren(group) {
+  if (!group) return;
+  while (group.children.length > 0) {
+    const child = group.children[0];
+    if (child.isCSS2DObject && child.element) {
+      child.element.remove();
+    }
+    safeRemove(child);
+  }
+}
+
+function normalizeZoneType(zoneValue) {
+  return zoneValue === 'commercial' ? 'shogyo' : zoneValue === 'residential' ? 'dai1jukyo' : zoneValue;
+}
+function getZoneRule(zoneCode) {
+  return ZONE_MASTER[zoneCode] || ZONE_MASTER.shogyo;
+}
+function applyZoneAutoInput(options={}) {
+  if (!inputs.zoneType) return;
+  const normalizedZone = normalizeZoneType(inputs.zoneType.value);
+  inputs.zoneType.value = normalizedZone;
+  const zone = getZoneRule(normalizedZone);
+  const designation = DESIGNATION_MASTER[DEFAULT_CITY_KEY]?.[normalizedZone];
+  if (designation) {
+    if (inputs.bcr) inputs.bcr.value = designation.bcr;
+    if (inputs.far) inputs.far.value = designation.far;
+  }
+
+  if (inputs.applyNorthSlant && !options.keepCurrentIfNoDesignation) {
+    inputs.applyNorthSlant.checked = (zone.northHeight !== null);
+  }
+
+  let extraText = '';
+  if (zone.northHeight) extraText += ` / 北側斜線 ${zone.northHeight}m+${zone.northSlope}`;
+  if (zone.shadowReg) extraText += ` / <span class="text-red-600">日影規制 ${zone.shadowReg}</span>`;
+  q('zoneAutoHint').innerHTML = `${zone.label} / 道路斜線勾配 ${zone.roadSlope} / 幅員係数 ${zone.farRoadCoeff} / 建ぺい率 ${designation ? designation.bcr : '未設定'}% / 容積率 ${designation ? designation.far : '未設定'}%<br>隣地斜線: ${zone.adjHeight ? zone.adjHeight + 'm立上り ' + zone.adjSlope : '適用なし'}${extraText}`;
+  if (!options.suppressUpdateScene) updateScene();
+}
+function updateDynamicMapLinks(address) {
+  const container = q('dynamicMapLinks');
+  container.innerHTML = '';
+  if (!address || address.length < 2) return;
+  const a = document.createElement('a');
+  a.href = `https://www.google.com/search?q=${encodeURIComponent(address + ' 都市計画マップ 用途地域')}`;
+  a.target = '_blank';
+  a.className = 'w-full mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white px-4 py-3 text-xs font-bold';
+  a.textContent = '行政法規確認（Google検索）';
+  container.appendChild(a);
+}
+
+function updateSelectOptions(selectId, pointsLength) {
+  const select = q(selectId);
+  if (!select) return;
+  const cur = select.value;
+  select.innerHTML = '<option value="-1">指定なし</option>';
+  for (let i = 1; i < pointsLength; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `辺${i + 1}`;
+    select.appendChild(opt);
+  }
+  const curNum = parseInt(cur, 10);
+  select.value = Number.isFinite(curNum) && curNum > 0 && curNum < pointsLength ? String(curNum) : '-1';
+}
+
+function createMeasureEdgeLabelIcon(text, tone = 'normal') {
+  const color = tone === 'front' ? '#ef4444' : tone === 'road2' ? '#2563eb' : '#f59e0b';
+  const bg = tone === 'front' ? 'rgba(239,68,68,0.96)' : tone === 'road2' ? 'rgba(37,99,235,0.96)' : 'rgba(245,158,11,0.96)';
+  return L.divIcon({
+    className: '',
+    html: `<div style="background:${bg};color:#fff;border:2px solid #fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:900;line-height:1;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.28);text-shadow:0 1px 1px rgba(0,0,0,.25);">${text}</div>`,
+    iconSize: [64, 22],
+    iconAnchor: [32, 11]
+  });
+}
+
+function addMeasureEdgeNumberLabels(points, layer, road2Idx) {
+  if (!window.L || !layer || !Array.isArray(points) || points.length < 2) return;
+  const edgeCount = points.length >= 3 ? points.length : 1;
+  for (let i = 0; i < edgeCount; i++) {
+    if (points.length < 3 && i > 0) break;
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    if (!p1 || !p2) continue;
+    const mid = L.latLng((p1.lat + p2.lat) / 2, (p1.lng + p2.lng) / 2);
+    const tone = i === 0 ? 'front' : i === road2Idx ? 'road2' : 'normal';
+    const suffix = i === 0 ? ' 前面' : i === road2Idx ? ' 第2' : '';
+    L.marker(mid, {
+      icon: createMeasureEdgeLabelIcon(`辺${i + 1}${suffix}`, tone),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 1000
+    }).addTo(layer);
+  }
+}
+
+function calculatePolygonStatsBase(pts) {
+  if (!pts || pts.length < 3) return { area: 0, width: 0, depth: 0, normalizedPolygon: null, cx: 0, cy: 0 };
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  pts.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+  }
+
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const normalizedPolygon = pts.map(p => ({ x: p.x - cx, z: -(p.y - cy) }));
+
+  const p0 = pts[0], p1 = pts[1];
+  const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+  let rotatedPts = pts.map(p => {
+    const tx = p.x - p0.x, ty = p.y - p0.y;
+    return { x: tx * Math.cos(-angle) - ty * Math.sin(-angle), y: tx * Math.sin(-angle) + ty * Math.cos(-angle) };
+  });
+  let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
+  rotatedPts.forEach(p => { rMinX = Math.min(rMinX, p.x); rMaxX = Math.max(rMaxX, p.x); rMinY = Math.min(rMinY, p.y); rMaxY = Math.max(rMaxY, p.y); });
+
+  return { area: Math.abs(area / 2), width: rMaxX - rMinX, depth: rMaxY - rMinY, normalizedPolygon, cx, cy };
+}
+
+function calculatePolygonStats(latlngs) {
+  if (latlngs.length < 3) return { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+  const R = 6378137, lat0 = latlngs[0].lat * Math.PI / 180;
+  return calculatePolygonStatsBase(latlngs.map(ll => ({
+    x: (ll.lng - latlngs[0].lng) * (Math.PI / 180) * R * Math.cos(lat0),
+    y: (ll.lat - latlngs[0].lat) * (Math.PI / 180) * R
+  })));
+}
+function calculateImagePolygonStats(latlngs) {
+  if (latlngs.length < 3) return { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+  return calculatePolygonStatsBase(latlngs.map(ll => ({ x: ll.lng * imageScaleFactor, y: ll.lat * imageScaleFactor })));
+}
+function rebuildImageMarkers() {
+  if (!imageMarkersLayer || !vertexIcon) return;
+  imageMarkersLayer.clearLayers();
+  imageMapMarkers = [];
+  imageMapPoints.forEach((pt, idx) => {
+    const marker = L.marker(pt, { icon: vertexIcon, draggable: true }).addTo(imageMarkersLayer);
+    marker.on('drag', ev => { imageMapPoints[idx] = ev.target.getLatLng(); updateMeasureGraphics('imageMap'); });
+    imageMapMarkers.push(marker);
+  });
+}
+async function initLeafletMap(addressToSearch = null) {
+  if (!window.L) return showToast('Leaflet の読み込みに失敗しました', true);
+  if (!vertexIcon) vertexIcon = L.divIcon({ className: 'vertex-icon', html: '<div></div>', iconSize: [18,18], iconAnchor:[9,9] });
+  if (!leafletMap) {
+    leafletMap = L.map('leaflet-map', { zoomControl: false }).setView([35.6812, 139.7671], 19);
+    L.control.zoom({ position: 'topright' }).addTo(leafletMap);
+
+    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxNativeZoom: 20,
+      maxZoom: 23,
+      attribution:'Map data &copy; Google'
+    }).addTo(leafletMap);
+
+    mapPolygonLayer = L.layerGroup().addTo(leafletMap);
+    mapMarkersLayer = L.layerGroup().addTo(leafletMap);
+    tempMapRoadLayer = L.layerGroup().addTo(leafletMap);
+
+    leafletMap.on('click', e => {
+      if (mapMeasuringMode === 'polygon') {
+        const idx = mapPoints.length;
+        mapPoints.push(e.latlng);
+        const marker = L.marker(e.latlng, { icon: vertexIcon, draggable: true }).addTo(mapMarkersLayer);
+        mapMarkers.push(marker);
+        marker.on('drag', ev => { mapPoints[idx] = ev.target.getLatLng(); updateMeasureGraphics('map'); });
+        updateMeasureGraphics('map');
+      } else if (mapMeasuringMode === 'road1' || mapMeasuringMode === 'road2') {
+        tempMapRoadPoints.push(e.latlng);
+        L.circleMarker(e.latlng, { radius: 4, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1 }).addTo(tempMapRoadLayer);
+
+        if (tempMapRoadPoints.length === 2) {
+          L.polyline(tempMapRoadPoints, { color: '#ef4444', weight: 4, dashArray: '5,5' }).addTo(tempMapRoadLayer);
+          const distance = tempMapRoadPoints[0].distanceTo(tempMapRoadPoints[1]);
+
+          if (mapMeasuringMode === 'road1') {
+            inputs.roadWidth.value = distance.toFixed(2);
+            inputs.roadWidth.dispatchEvent(new Event('input'));
+            showToast(`前面道路の幅員を ${distance.toFixed(2)}m に設定しました`);
+          } else {
+            inputs.road2Width.value = distance.toFixed(2);
+            inputs.hasRoad2.checked = true;
+            q('road2Settings').classList.remove('hidden');
+            inputs.road2Width.dispatchEvent(new Event('input'));
+            showToast(`第2道路の幅員を ${distance.toFixed(2)}m に設定しました`);
+          }
+
+          mapMeasuringMode = 'polygon';
+          q('measureMapRoadHint').classList.add('hidden');
+          q('measureMapRoad1Btn').classList.remove('bg-blue-100', 'border-blue-500');
+          q('measureMapRoad2Btn').classList.remove('bg-blue-100', 'border-blue-500');
+
+          setTimeout(() => { tempMapRoadLayer.clearLayers(); tempMapRoadPoints = []; }, 2000);
+        }
+      }
+    });
+  }
+  const mapRoad2Select = q('mapRoad2Select');
+  if (mapRoad2Select && !mapRoad2Select.dataset.bound) {
+    mapRoad2Select.addEventListener('change', () => updateMeasureGraphics('map'));
+    mapRoad2Select.dataset.bound = '1';
+  }
+  leafletMap.invalidateSize();
+  if (mapPoints.length >= 2) updateMeasureGraphics('map');
+  if (addressToSearch && addressToSearch.trim()) {
+    try {
+      showToast('入力された住所の場所へ地図を移動しています...');
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressToSearch)}`);
+      const data = await res.json();
+      if (data?.length) leafletMap.flyTo([parseFloat(data[0].lat), parseFloat(data[0].lon)], 19, { animate: false });
+      else showToast('地図上で住所が見つかりませんでした。手動で移動してください。', true);
+    } catch (e) { console.error(e); }
+  }
+}
+function initImageMeasureMap() {
+  if (!uploadedImageUrl || !uploadedImageWidth || !uploadedImageHeight) return showToast('先に画像を読み込んでください', true);
+  if (!window.L) return showToast('Leaflet の読み込みに失敗しました', true);
+  if (!vertexIcon) vertexIcon = L.divIcon({ className: 'vertex-icon', html: '<div></div>', iconSize:[18,18], iconAnchor:[9,9] });
+  if (imageLeafletMap) imageLeafletMap.remove();
+  imageLeafletMap = L.map('image-leaflet-map', { crs: L.CRS.Simple, minZoom: -5, maxZoom: 3, zoomControl: false });
+  L.control.zoom({ position:'topright' }).addTo(imageLeafletMap);
+  const bounds = [[0,0],[uploadedImageHeight, uploadedImageWidth]];
+  L.imageOverlay(uploadedImageUrl, bounds).addTo(imageLeafletMap);
+  imageLeafletMap.fitBounds(bounds, { padding:[120,120] });
+  imagePolygonLayer = L.layerGroup().addTo(imageLeafletMap);
+  imageMarkersLayer = L.layerGroup().addTo(imageLeafletMap);
+  tempRoadLayer = L.layerGroup().addTo(imageLeafletMap);
+
+  imageLeafletMap.on('click', e => {
+    if (imageMeasuringMode === 'polygon') {
+      const idx = imageMapPoints.length;
+      imageMapPoints.push(e.latlng);
+      const marker = L.marker(e.latlng, { icon: vertexIcon, draggable: true }).addTo(imageMarkersLayer);
+      imageMapMarkers.push(marker);
+      marker.on('drag', ev => { imageMapPoints[idx] = ev.target.getLatLng(); updateMeasureGraphics('imageMap'); });
+      updateMeasureGraphics('imageMap');
+    } else if (imageMeasuringMode === 'road1' || imageMeasuringMode === 'road2') {
+      tempRoadPoints.push(e.latlng);
+      L.circleMarker(e.latlng, { radius: 4, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1 }).addTo(tempRoadLayer);
+
+      if (tempRoadPoints.length === 2) {
+        L.polyline(tempRoadPoints, { color: '#ef4444', weight: 4, dashArray: '5,5' }).addTo(tempRoadLayer);
+        const dx = (tempRoadPoints[1].lng - tempRoadPoints[0].lng) * imageScaleFactor;
+        const dy = (tempRoadPoints[1].lat - tempRoadPoints[0].lat) * imageScaleFactor;
+        const distance = Math.hypot(dx, dy);
+
+        if (imageMeasuringMode === 'road1') {
+          inputs.roadWidth.value = distance.toFixed(2);
+          inputs.roadWidth.dispatchEvent(new Event('input'));
+          showToast(`前面道路の幅員を ${distance.toFixed(2)}m に設定しました`);
+        } else {
+          inputs.road2Width.value = distance.toFixed(2);
+          inputs.hasRoad2.checked = true;
+          q('road2Settings').classList.remove('hidden');
+          inputs.road2Width.dispatchEvent(new Event('input'));
+          showToast(`第2道路の幅員を ${distance.toFixed(2)}m に設定しました`);
+        }
+
+        imageMeasuringMode = 'polygon';
+        q('measureRoadHint').classList.add('hidden');
+        q('measureRoad1Btn').classList.remove('bg-blue-100', 'border-blue-500');
+        q('measureRoad2Btn').classList.remove('bg-blue-100', 'border-blue-500');
+
+        setTimeout(() => { tempRoadLayer.clearLayers(); tempRoadPoints = []; }, 2000);
+      }
+    }
+  });
+
+  const road2Select = q('imageMapRoad2Select');
+  if (road2Select && !road2Select.dataset.bound) {
+    road2Select.addEventListener('change', () => updateMeasureGraphics('imageMap'));
+    road2Select.dataset.bound = '1';
+  }
+  rebuildImageMarkers();
+  updateMeasureGraphics('imageMap');
+}
+function updateMeasureGraphics(type) {
+  const isMap = type === 'map';
+  const points = isMap ? mapPoints : imageMapPoints;
+  const polyLayer = isMap ? mapPolygonLayer : imagePolygonLayer;
+  if (!polyLayer) return;
+  const selectId = isMap ? 'mapRoad2Select' : 'imageMapRoad2Select';
+  const applyBtnId = isMap ? 'applyMapBtn' : 'applyImageMapBtn';
+  const adjustBtnId = isMap ? 'adjustAreaBtn' : 'adjustImageAreaBtn';
+  const prefix = isMap ? 'map' : 'imageMap';
+  const colorMain = isMap ? '#f59e0b' : '#3b82f6';
+  const fillCol = isMap ? '#fcd34d' : '#93c5fd';
+  updateSelectOptions(selectId, points.length);
+  polyLayer.clearLayers();
+
+  const road2IdxRaw = parseInt(q(selectId)?.value || '-1', 10);
+  const road2Idx = Number.isNaN(road2IdxRaw) ? -1 : road2IdxRaw;
+
+  if (points.length >= 2) {
+    L.polyline([points[0], points[1]], { color:'#ef4444', weight:5 }).addTo(polyLayer);
+    if (points.length > 2) {
+      for (let i = 1; i < points.length; i++) {
+        L.polyline([points[i], points[(i + 1) % points.length]], {
+          color: i === road2Idx ? '#3b82f6' : colorMain,
+          weight: i === road2Idx ? 5 : 3,
+          dashArray: i === road2Idx ? null : '5,5'
+        }).addTo(polyLayer);
+      }
+    }
+    addMeasureEdgeNumberLabels(points, polyLayer, road2Idx);
+  }
+
+  const applyBtn = q(applyBtnId), adjustBtn = q(adjustBtnId);
+  if (points.length >= 3) {
+    L.polygon(points, { color: colorMain, fillColor: fillCol, fillOpacity: 0.2, weight: 0 }).addTo(polyLayer);
+    const stats = isMap ? calculatePolygonStats(points) : calculateImagePolygonStats(points);
+    if (isMap) mapStats = stats; else imageMapStats = stats;
+    q(`${prefix}AreaDisplay`).textContent = stats.area.toFixed(1);
+    q(`${prefix}WidthDisplay`).textContent = stats.width.toFixed(1);
+    q(`${prefix}DepthDisplay`).textContent = stats.depth.toFixed(1);
+    if (adjustBtn) adjustBtn.disabled = false;
+    if (applyBtn) applyBtn.disabled = !(isMap || isImageScaleAdjusted);
+  } else {
+    q(`${prefix}AreaDisplay`).textContent = '0.0';
+    q(`${prefix}WidthDisplay`).textContent = '0.0';
+    q(`${prefix}DepthDisplay`).textContent = '0.0';
+    if (adjustBtn) adjustBtn.disabled = true;
+    if (applyBtn) applyBtn.disabled = true;
+  }
+}
+function clearMeasure(type) {
+  const isMap = type === 'map';
+  if (isMap) {
+    mapPoints = [];
+    mapMarkers = [];
+    mapStats = { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+    mapMarkersLayer?.clearLayers();
+
+    tempMapRoadLayer?.clearLayers();
+    tempMapRoadPoints = [];
+    mapMeasuringMode = 'polygon';
+    q('measureMapRoadHint')?.classList.add('hidden');
+    q('measureMapRoad1Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+    q('measureMapRoad2Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  } else {
+    imageMapPoints = [];
+    imageMapMarkers = [];
+    imageMapStats = { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+    imageMarkersLayer?.clearLayers();
+    imageScaleFactor = 1;
+    isImageScaleAdjusted = false;
+    q('imageScaleAlert').textContent = '(面積補正必須)';
+    q('imageScaleAlert').classList.remove('text-green-500');
+    q('imageScaleAlert').classList.add('text-red-500');
+
+    tempRoadLayer?.clearLayers();
+    tempRoadPoints = [];
+    imageMeasuringMode = 'polygon';
+    q('measureRoadHint')?.classList.add('hidden');
+    q('measureRoad1Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+    q('measureRoad2Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  }
+  const selectId = isMap ? 'mapRoad2Select' : 'imageMapRoad2Select';
+  const sel = q(selectId);
+  if (sel) sel.value = '-1';
+  updateSelectOptions(selectId, 0);
+  customSiteRoad2Index = -1;
+  updateMeasureGraphics(type);
+}
+function handleAdjustArea(type) {
+  const isMap = type === 'map';
+  const targetInputId = isMap ? 'targetAreaInput' : 'targetImageAreaInput';
+  const points = isMap ? mapPoints : imageMapPoints;
+  const currentStats = isMap ? mapStats : imageMapStats;
+  const targetArea = parseFloat(q(targetInputId)?.value);
+  if (!targetArea || targetArea <= 0 || points.length < 3 || currentStats.area === 0) return;
+  const scale = Math.sqrt(targetArea / currentStats.area);
+  if (isMap) {
+    const R = 6378137, lat0 = points[0].lat * Math.PI / 180;
+    const pts = points.map(ll => ({ x: (ll.lng - points[0].lng) * (Math.PI / 180) * R * Math.cos(lat0), y: (ll.lat - points[0].lat) * (Math.PI / 180) * R }));
+    let cx = 0, cy = 0, tmpArea = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      const cross = pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+      tmpArea += cross;
+      cx += (pts[i].x + pts[j].x) * cross;
+      cy += (pts[i].y + pts[j].y) * cross;
+    }
+    tmpArea /= 2; cx /= (6 * tmpArea); cy /= (6 * tmpArea);
+    const newPts = pts.map(p => ({ x: cx + (p.x - cx) * scale, y: cy + (p.y - cy) * scale }));
+    mapPoints = newPts.map(p => L.latLng(points[0].lat + p.y / ((Math.PI / 180) * R), points[0].lng + p.x / ((Math.PI / 180) * R * Math.cos(lat0))));
+    mapPoints.forEach((latlng, idx) => mapMarkers[idx].setLatLng(latlng));
+  } else {
+    imageScaleFactor *= scale;
+    isImageScaleAdjusted = true;
+    q('imageScaleAlert').textContent = '(スケール補正済)';
+    q('imageScaleAlert').classList.remove('text-red-500');
+    q('imageScaleAlert').classList.add('text-green-500');
+  }
+  updateMeasureGraphics(type);
+  showToast(`${isMap ? 'プロポーションを維持して' : '画像のスケールを補正し、'}面積を ${targetArea} m² に設定しました`);
+}
+
+function applyMeasureToSite(type) {
+  const isMap = type === 'map';
+  const stats = isMap ? mapStats : imageMapStats;
+  const selectId = isMap ? 'mapRoad2Select' : 'imageMapRoad2Select';
+  if (stats.area > 0 && (isMap || isImageScaleAdjusted)) {
+    cleanupScene();
+
+    inputs.inputSiteArea.value = stats.area.toFixed(1);
+    inputs.siteWidth.value = stats.width.toFixed(1);
+    inputs.siteDepth.value = stats.depth.toFixed(1);
+
+    const rawPoly = stats.normalizedPolygon ? stats.normalizedPolygon.map(p => ({ x: p.x, z: p.z })) : null;
+    customSitePolygon = rawPoly ? sanitizePolygon(rawPoly) : null;
+    if (customSitePolygon && customSitePolygon.length < 3) customSitePolygon = null;
+
+    const v = parseInt(q(selectId)?.value || '-1', 10);
+    customSiteRoad2Index = Number.isNaN(v) ? -1 : v;
+    if (customSiteRoad2Index > 0) {
+      inputs.hasRoad2.checked = true;
+      q('road2Settings').classList.remove('hidden');
+    } else {
+      inputs.hasRoad2.checked = false;
+      q('road2Settings').classList.add('hidden');
+    }
+
+    if (!isMap) {
+      if (inputs.northAngle) {
+        inputs.northAngle.value = 0;
+        const needle = q('northNeedle');
+        if (needle) needle.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    if (!isMap && traceMesh) {
+      inputs.traceToggle.checked = true;
+      q('traceSettings').classList.remove('hidden');
+      traceMesh.visible = true;
+
+      const cx = stats.cx, cy = stats.cy;
+      const imgCenter_X = (uploadedImageWidth / 2) * imageScaleFactor;
+      const imgCenter_Y = (uploadedImageHeight / 2) * imageScaleFactor;
+
+      const targetX = imgCenter_X - cx;
+      const targetZ = -(imgCenter_Y - cy);
+
+      const traceScale = q('traceScale'), traceX = q('traceX'), traceZ = q('traceZ'), traceRot = q('traceRot');
+      if (traceScale) traceScale.value = imageScaleFactor.toFixed(4);
+      if (traceRot) traceRot.value = 0;
+      if (traceX) traceX.value = targetX.toFixed(2);
+      if (traceZ) traceZ.value = targetZ.toFixed(2);
+      updateTraceMesh();
+    }
+
+    updateAdjSetbackUI();
+    setView('persp');
+    showToast(`${isMap ? '地図' : '画像'}計測結果（面積: ${stats.area.toFixed(1)}m²）を敷地に反映しました`);
+  }
+}
+
+function getPolygonArea(poly) {
+  if (!poly || poly.length < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    a += poly[i].x * poly[j].z - poly[j].x * poly[i].z;
+  }
+  return Math.abs(a / 2);
+}
+function clipPolygon(poly, P, N) {
+  if (!poly || poly.length < 3) return [];
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const pt1 = poly[i], pt2 = poly[(i + 1) % poly.length];
+    const d1 = (pt1.x - P.x) * N.x + (pt1.z - P.z) * N.z;
+    const d2 = (pt2.x - P.x) * N.x + (pt2.z - P.z) * N.z;
+    if (d1 >= -1e-5) {
+      out.push(pt1);
+      if (d2 < -1e-5) {
+        const t = d1 / (d1 - d2);
+        out.push(new THREE.Vector3(pt1.x + t * (pt2.x - pt1.x), 0, pt1.z + t * (pt2.z - pt1.z)));
+      }
+    } else if (d2 >= -1e-5) {
+      const t = d1 / (d1 - d2);
+      out.push(new THREE.Vector3(pt1.x + t * (pt2.x - pt1.x), 0, pt1.z + t * (pt2.z - pt1.z)));
+    }
+  }
+  return out.length >= 3 ? [out] : [];
+}
+function sanitizePolygon(poly) {
+  if (!Array.isArray(poly)) return [];
+  const out = [];
+  for (const pt of poly) {
+    if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.z)) continue;
+    const x = Number(pt.x), z = Number(pt.z);
+    const prev = out[out.length - 1];
+    if (!prev || Math.hypot(prev.x - x, prev.z - z) > 0.05) out.push({ x, z });
+  }
+  if (out.length > 1) {
+    const first = out[0], last = out[out.length - 1];
+    if (Math.hypot(first.x - last.x, first.z - last.z) <= 0.05) out.pop();
+  }
+  return out.length >= 3 ? out : [];
+}
+function polygonToClipRing(poly) {
+  const clean = sanitizePolygon(poly);
+  if (clean.length < 3) return null;
+  const ring = clean.map(p => [Number(p.x.toFixed(3)), Number(p.z.toFixed(3))]);
+  ring.push([...ring[0]]);
+  return ring;
+}
+function clipResultToPolygons(result) {
+  if (!Array.isArray(result)) return [];
+  const polys = [];
+  for (const polygon of result) {
+    if (!Array.isArray(polygon) || !Array.isArray(polygon[0])) continue;
+    const exterior = polygon[0];
+    const poly = sanitizePolygon(exterior.map(([x, z]) => ({ x, z })));
+    if (poly.length >= 3 && getPolygonArea(poly) > 1e-4) polys.push(poly);
+  }
+  return polys;
+}
+function intersectPolygonsWithEnvelope(subjectPolys, envelopePoly) {
+  const subjects = (Array.isArray(subjectPolys) ? subjectPolys : [subjectPolys]).map(sanitizePolygon).filter(poly => poly.length >= 3);
+  const envelope = sanitizePolygon(envelopePoly);
+  if (!subjects.length) return [];
+  if (envelope.length < 3 || !polygonClippingLib) return subjects;
+  try {
+    const subjectMulti = subjects.map(poly => [polygonToClipRing(poly)]).filter(poly => poly[0]);
+    const envelopeRing = polygonToClipRing(envelope);
+    if (!subjectMulti.length || !envelopeRing) return subjects;
+    const result = polygonClippingLib.intersection(subjectMulti, [[envelopeRing]]);
+    const clipped = clipResultToPolygons(result);
+    return clipped.length ? clipped : [];
+  } catch (e) {
+    console.warn('Envelope clip failed', e);
+    return subjects;
+  }
+}
+
+function intersectPolygonsWithEnvelopes(subjectPolys, envelopePolys) {
+  const subjects = (Array.isArray(subjectPolys) ? subjectPolys : [subjectPolys]).map(sanitizePolygon).filter(poly => poly.length >= 3);
+  const envelopes = (Array.isArray(envelopePolys) ? envelopePolys : [envelopePolys]).map(sanitizePolygon).filter(poly => poly.length >= 3);
+  if (!subjects.length || !envelopes.length) return [];
+  if (!polygonClippingLib) {
+    let out = [];
+    for (const env of envelopes) out.push(...intersectPolygonsWithEnvelope(subjects, env));
+    return out;
+  }
+  try {
+    const subjectMulti = subjects.map(poly => [polygonToClipRing(poly)]).filter(poly => poly[0]);
+    const envelopeMulti = envelopes.map(poly => [polygonToClipRing(poly)]).filter(poly => poly[0]);
+    if (!subjectMulti.length || !envelopeMulti.length) return [];
+    const result = polygonClippingLib.intersection(subjectMulti, envelopeMulti);
+    return clipResultToPolygons(result);
+  } catch (e) {
+    console.warn('Multi-envelope clip failed', e);
+    let out = [];
+    for (const env of envelopes) out.push(...intersectPolygonsWithEnvelope(subjects, env));
+    return out;
+  }
+}
+
+function getLargestPolygon(polys) {
+  const cleanPolys = (Array.isArray(polys) ? polys : []).map(sanitizePolygon).filter(poly => poly.length >= 3);
+  if (!cleanPolys.length) return [];
+  cleanPolys.sort((a, b) => getPolygonArea(b) - getPolygonArea(a));
+  return cleanPolys[0];
+}
+function sumPolygonsArea(polys) {
+  return (Array.isArray(polys) ? polys : []).reduce((sum, poly) => sum + getPolygonArea(poly), 0);
+}
+
+function unionPolygons(polys, minArea = 0.5) {
+  const clean = (Array.isArray(polys) ? polys : [])
+    .map(sanitizePolygon)
+    .filter(poly => poly.length >= 3 && getPolygonArea(poly) >= minArea);
+  if (clean.length <= 1 || !polygonClippingLib) return clean;
+  try {
+    const multi = clean.map(poly => [polygonToClipRing(poly)]).filter(poly => poly[0]);
+    if (!multi.length) return [];
+    return clipResultToPolygons(polygonClippingLib.union(...multi))
+      .map(sanitizePolygon)
+      .filter(poly => poly.length >= 3 && getPolygonArea(poly) >= minArea)
+      .sort((a, b) => getPolygonArea(b) - getPolygonArea(a));
+  } catch (e) {
+    console.warn('Polygon union failed', e);
+    return clean;
+  }
+}
+
+const MIN_FLOOR_POLYGON_AREA = 0.5;
+const ROAD_SLANT_SPLIT_MIN_AREA = 1.0;
+
+function clonePoly(poly) {
+  return (Array.isArray(poly) ? poly : []).map(p => ({ x: Number(p.x), z: Number(p.z) })).filter(p => Number.isFinite(p.x) && Number.isFinite(p.z));
+}
+
+function normalizeFloorPolys(polys, minArea = MIN_FLOOR_POLYGON_AREA) {
+  return unionPolygons(polys, minArea);
+}
+
+function clipFloorPolysToEnvelope(polys, envelopePoly, minArea = MIN_FLOOR_POLYGON_AREA) {
+  return normalizeFloorPolys(intersectPolygonsWithEnvelope(polys, envelopePoly), minArea);
+}
+
+function clipFloorPolysToEnvelopes(polys, envelopePolys, minArea = MIN_FLOOR_POLYGON_AREA) {
+  return normalizeFloorPolys(intersectPolygonsWithEnvelopes(polys, envelopePolys), minArea);
+}
+
+function subtractPolygonsByEnvelope(subjectPolys, envelopePoly) {
+  const subjects = (Array.isArray(subjectPolys) ? subjectPolys : [subjectPolys]).map(sanitizePolygon).filter(poly => poly.length >= 3);
+  const envelope = sanitizePolygon(envelopePoly);
+  if (!subjects.length) return [];
+  if (envelope.length < 3 || !polygonClippingLib) return subjects;
+  try {
+    const subjectMulti = subjects.map(poly => [polygonToClipRing(poly)]).filter(poly => poly[0]);
+    const envelopeRing = polygonToClipRing(envelope);
+    if (!subjectMulti.length || !envelopeRing) return subjects;
+    const result = polygonClippingLib.difference(subjectMulti, [[envelopeRing]]);
+    return clipResultToPolygons(result);
+  } catch (e) {
+    console.warn('Envelope difference failed', e);
+    return subjects;
+  }
+}
+
+function createRoadEdgeInfluenceEnvelope(roadData, depth, tangentPad = 0.05, outsidePad = 5) {
+  if (!roadData || !roadData.p1 || !roadData.p2 || !roadData.Nf) return null;
+  const p1 = roadData.p1, p2 = roadData.p2;
+  const dx = p2.x - p1.x, dz = p2.z - p1.z;
+  const len = Math.hypot(dx, dz);
+  if (len <= 1e-5) return null;
+  const tx = dx / len, tz = dz / len;
+  const nx = roadData.Nf.x, nz = roadData.Nf.z;
+  const dIn = Math.max(10, depth || 100);
+  const dOut = Math.max(1, outsidePad || 5);
+  // 道路斜線は接道辺の実長だけで止めず、不整形敷地でも敷地全体を横断できる長さまで延長する。
+  // ただし無限にはせず、敷地外周の最大寸法をもとにした有限の影響帯として扱う。
+  const pad = Math.max(0.02, Number.isFinite(tangentPad) ? tangentPad : 0.05);
+  return [
+    { x: p1.x - tx * pad - nx * dOut, z: p1.z - tz * pad - nz * dOut },
+    { x: p2.x + tx * pad - nx * dOut, z: p2.z + tz * pad - nz * dOut },
+    { x: p2.x + tx * pad + nx * dIn,  z: p2.z + tz * pad + nz * dIn  },
+    { x: p1.x - tx * pad + nx * dIn,  z: p1.z - tz * pad + nz * dIn  }
+  ];
+}
+
+function getPolygonExtentInfo(poly, fallback = 100) {
+  const clean = sanitizePolygon(poly);
+  if (!clean.length) return { width: fallback, depth: fallback, diagonal: fallback };
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  clean.forEach(p => {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+  });
+  const width = Math.max(0, maxX - minX);
+  const depth = Math.max(0, maxZ - minZ);
+  return { width, depth, diagonal: Math.hypot(width, depth) };
+}
+
+function getRoadEdgeMeshWidth(roadData, tangentPad = 0.05) {
+  if (!roadData || !roadData.p1 || !roadData.p2) return 1;
+  const len = Math.hypot(roadData.p2.x - roadData.p1.x, roadData.p2.z - roadData.p1.z);
+  return Math.max(0.1, len + Math.max(0, tangentPad) * 2);
+}
+
+function getRoadSpanClipHalfPlanes(roadData, tangentPad = 0.05) {
+  if (!roadData || !roadData.p1 || !roadData.p2) return [];
+  const dx = roadData.p2.x - roadData.p1.x;
+  const dz = roadData.p2.z - roadData.p1.z;
+  const len = Math.hypot(dx, dz);
+  if (len <= 1e-5) return [];
+  const t = new THREE.Vector3(dx / len, 0, dz / len);
+  const pStart = roadData.p1.clone().sub(t.clone().multiplyScalar(tangentPad));
+  const pEnd = roadData.p2.clone().add(t.clone().multiplyScalar(tangentPad));
+  return [
+    { P: pStart, N: t.clone() },
+    { P: pEnd, N: t.clone().negate() }
+  ];
+}
+
+function createExclusionPolygons(p1, p2, Nf, reqD) {
+  if (reqD <= 0 || !Number.isFinite(reqD)) return [];
+
+  const dx = p2.x - p1.x;
+  const dz = p2.z - p1.z;
+  const len = Math.hypot(dx, dz);
+  if (len <= 1e-5) return [];
+
+  const tx = dx / len;
+  const tz = dz / len;
+
+  const outDepth = Math.max(100, reqD + 20);
+  const tangentPad = Math.min(0.05, Math.max(0, len * 0.002));
+
+  const p1_out = { x: p1.x - tx * tangentPad - Nf.x * outDepth, z: p1.z - tz * tangentPad - Nf.z * outDepth };
+  const p2_out = { x: p2.x + tx * tangentPad - Nf.x * outDepth, z: p2.z + tz * tangentPad - Nf.z * outDepth };
+  const p2_in  = { x: p2.x + tx * tangentPad + Nf.x * reqD,    z: p2.z + tz * tangentPad + Nf.z * reqD };
+  const p1_in  = { x: p1.x - tx * tangentPad + Nf.x * reqD,    z: p1.z - tz * tangentPad + Nf.z * reqD };
+
+  const rectPoly = [p1_out, p2_out, p2_in, p1_in].map(p => [Number(p.x.toFixed(3)), Number(p.z.toFixed(3))]);
+  rectPoly.push([...rectPoly[0]]);
+  return [[rectPoly]];
+}
+
+function lineIntersection2D(pointA, dirA, pointB, dirB) {
+  const det = dirA.x * dirB.z - dirA.z * dirB.x;
+  if (Math.abs(det) < 1e-8) return null;
+  const rx = pointB.x - pointA.x;
+  const rz = pointB.z - pointA.z;
+  const t = (rx * dirB.z - rz * dirB.x) / det;
+  return { x: pointA.x + dirA.x * t, z: pointA.z + dirA.z * t };
+}
+
+function createClipPolygonFromPoints(points) {
+  const clean = [];
+  for (const p of points) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) continue;
+    const q = { x: Number(p.x.toFixed(3)), z: Number(p.z.toFixed(3)) };
+    const last = clean[clean.length - 1];
+    if (!last || Math.hypot(last.x - q.x, last.z - q.z) > 1e-4) clean.push(q);
+  }
+  if (clean.length > 1 && Math.hypot(clean[0].x - clean[clean.length - 1].x, clean[0].z - clean[clean.length - 1].z) < 1e-4) clean.pop();
+  if (clean.length < 3 || getPolygonArea(clean) < 1e-4) return null;
+  const ring = clean.map(p => [p.x, p.z]);
+  ring.push([...ring[0]]);
+  return [[ring]];
+}
+
+function createCornerCapPolygons(prevEdge, nextEdge) {
+  if (!prevEdge || !nextEdge) return [];
+  const dPrev = prevEdge.d || 0;
+  const dNext = nextEdge.d || 0;
+  if (dPrev <= 0 || dNext <= 0) return [];
+
+  const P = nextEdge.p1;
+  if (!P || !Number.isFinite(P.x) || !Number.isFinite(P.z)) return [];
+
+  const A = { x: P.x + prevEdge.Nf.x * dPrev, z: P.z + prevEdge.Nf.z * dPrev };
+  const B = { x: P.x + nextEdge.Nf.x * dNext, z: P.z + nextEdge.Nf.z * dNext };
+  const I = lineIntersection2D(
+    A,
+    { x: prevEdge.tx, z: prevEdge.tz },
+    B,
+    { x: nextEdge.tx, z: nextEdge.tz }
+  );
+
+  const maxD = Math.max(dPrev, dNext);
+  const maxLocalReach = Math.max(maxD * 8 + 2, Math.min(prevEdge.len || 0, nextEdge.len || 0) + maxD * 3 + 1);
+  const useIntersection = I && Math.hypot(I.x - P.x, I.z - P.z) <= maxLocalReach;
+  const capPoints = useIntersection ? [P, A, I, B] : [P, A, B];
+  const cap = createClipPolygonFromPoints(capPoints);
+  return cap ? [cap] : [];
+}
+
+function applySetbacksToPolygonAll(poly, setbacksArray) {
+  if (!poly || poly.length < 3) return [];
+  if (!polygonClippingLib) return [poly.map(p => ({ x:p.x, z:p.z }))];
+
+  const n = poly.length;
+  const edgesData = new Array(poly.length).fill(null);
+  let signedArea = 0;
+  for (let i = 0; i < n; i++) {
+    const p1 = poly[i], p2 = poly[(i + 1) % n];
+    signedArea += p1.x * p2.z - p2.x * p1.z;
+  }
+  const sign = Math.sign(signedArea) || 1;
+
+  for (let i = 0; i < n; i++) {
+    const p1 = poly[i], p2 = poly[(i + 1) % n];
+    const dx = p2.x - p1.x, dz = p2.z - p1.z, len = Math.hypot(dx, dz);
+    if (len > 1e-5) {
+      const nx = -sign * dz / len, nz = sign * dx / len;
+      edgesData[i] = { p1, p2, Nf: {x: nx, z: nz}, d: setbacksArray[i] || 0, tx: dx / len, tz: dz / len, len };
+    }
+  }
+
+  let multiPoly = [polygonToClipRing(poly)];
+  if (!multiPoly[0]) return [];
+  let exclusions = [];
+
+  for (const edge of edgesData) {
+    if (edge && edge.d > 0 && Number.isFinite(edge.d)) {
+      exclusions.push(...createExclusionPolygons(edge.p1, edge.p2, edge.Nf, edge.d));
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const prevEdge = edgesData[(i - 1 + n) % n];
+    const nextEdge = edgesData[i];
+    exclusions.push(...createCornerCapPolygons(prevEdge, nextEdge));
+  }
+
+  if (exclusions.length > 0) {
+    try {
+      const result = polygonClippingLib.difference(multiPoly, ...exclusions);
+      return clipResultToPolygons(result);
+    } catch (e) {
+      console.warn('Apply setbacks failed', e);
+      return [poly.map(p => ({ x:p.x, z:p.z }))];
+    }
+  }
+  return [poly.map(p => ({ x:p.x, z:p.z }))];
+}
+
+function applySetbacksToPolygon(poly, setbacksArray) {
+  const polys = applySetbacksToPolygonAll(poly, setbacksArray);
+  if (polys.length) return getLargestPolygon(polys);
+  return [];
+}
+
+function getProjectionRange(poly, dir) {
+  let min = Infinity, max = -Infinity;
+  for (const pt of poly) {
+    const v = pt.x * dir.x + pt.z * dir.z;
+    min = Math.min(min, v);
+    max = Math.max(max, v);
+  }
+  return { min, max, center: (min + max) / 2 };
+}
+
+function normalize2DDir(dir, fallback) {
+  const x = Number(dir?.x), z = Number(dir?.z);
+  const len = Math.hypot(x, z);
+  if (len > 1e-8 && Number.isFinite(len)) return { x: x / len, z: z / len };
+  return fallback;
+}
+
+function buildScaledAlignedPolygon(poly, scale, alignMode, refPoly, alignBasis = null) {
+  let pMinX = Infinity, pMaxX = -Infinity, pMinZ = Infinity, pMaxZ = -Infinity;
+  poly.forEach(pt => {
+    pMinX = Math.min(pMinX, pt.x); pMaxX = Math.max(pMaxX, pt.x);
+    pMinZ = Math.min(pMinZ, pt.z); pMaxZ = Math.max(pMaxZ, pt.z);
+  });
+  const cx = (pMinX + pMaxX) / 2, cz = (pMinZ + pMaxZ) / 2;
+  const scaledPoly = poly.map(pt => ({ x: cx + (pt.x - cx) * scale, z: cz + (pt.z - cz) * scale }));
+  const ref = (refPoly && refPoly.length >= 3) ? refPoly : poly;
+
+  if (alignBasis && alignBasis.u && alignBasis.v) {
+    const u = normalize2DDir(alignBasis.u, {x:1, z:0});      // 前面道路に沿う方向
+    const v = normalize2DDir(alignBasis.v, {x:0, z:1});      // 前面道路から敷地奥へ向かう方向
+    const refU = getProjectionRange(ref, u), refV = getProjectionRange(ref, v);
+    const scU = getProjectionRange(scaledPoly, u), scV = getProjectionRange(scaledPoly, v);
+    let du = refU.center - scU.center;
+    let dv = refV.center - scV.center;
+
+    if (alignMode === 'back') {
+      dv = refV.max - scV.max;
+    } else if (alignMode === 'front') {
+      dv = refV.min - scV.min;
+    } else if (alignMode === 'left') {
+      du = refU.min - scU.min;
+    } else if (alignMode === 'right') {
+      du = refU.max - scU.max;
+    }
+
+    return scaledPoly.map(pt => ({ x: pt.x + u.x * du + v.x * dv, z: pt.z + u.z * du + v.z * dv }));
+  }
+
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  ref.forEach(pt => { minX = Math.min(minX, pt.x); maxX = Math.max(maxX, pt.x); minZ = Math.min(minZ, pt.z); maxZ = Math.max(maxZ, pt.z); });
+  let tMinX = Infinity, tMaxX = -Infinity, tMinZ = Infinity, tMaxZ = -Infinity;
+  scaledPoly.forEach(pt => { tMinX = Math.min(tMinX, pt.x); tMaxX = Math.max(tMaxX, pt.x); tMinZ = Math.min(tMinZ, pt.z); tMaxZ = Math.max(tMaxZ, pt.z); });
+  let offsetX = 0, offsetZ = 0;
+  if (alignMode === 'center') { offsetX = ((minX + maxX) / 2) - ((tMinX + tMaxX) / 2); offsetZ = ((minZ + maxZ) / 2) - ((tMinZ + tMaxZ) / 2); }
+  else if (alignMode === 'back') offsetZ = maxZ - tMaxZ;
+  else if (alignMode === 'front') offsetZ = minZ - tMinZ;
+  else if (alignMode === 'left') offsetX = minX - tMinX;
+  else if (alignMode === 'right') offsetX = maxX - tMaxX;
+  return scaledPoly.map(pt => ({ x: pt.x + offsetX, z: pt.z + offsetZ }));
+}
+
+function scaleAndAlignPolygon(poly, targetArea, alignMode, refPoly, alignBasis = null) {
+  const currentArea = getPolygonArea(poly);
+  if (currentArea < 1e-6 || targetArea >= currentArea) return poly;
+  const scale = Math.sqrt(targetArea / currentArea);
+  return buildScaledAlignedPolygon(poly, scale, alignMode, refPoly, alignBasis);
+}
+
+function fitAlignedPolygonToArea(poly, targetArea, alignMode, refPoly, alignBasis = null) {
+  const currentArea = getPolygonArea(poly);
+  const ref = (refPoly && refPoly.length >= 3) ? refPoly : poly;
+  if (currentArea < 1e-6) return [];
+  if (targetArea >= currentArea) return [poly.map(p => ({ x:p.x, z:p.z }))];
+
+  let low = 0.01, high = 1.0;
+  let bestPolys = [];
+  let bestDiff = Infinity;
+
+  for (let iter = 0; iter < 32; iter++) {
+    const mid = (low + high) / 2;
+    const cand = buildScaledAlignedPolygon(poly, mid, alignMode, ref, alignBasis);
+    const clipped = intersectPolygonsWithEnvelope([cand], ref);
+    const area = sumPolygonsArea(clipped);
+    const diff = Math.abs(area - targetArea);
+    if (clipped.length && diff < bestDiff) {
+      bestDiff = diff;
+      bestPolys = clipped;
+    }
+    if (area > targetArea) high = mid;
+    else low = mid;
+  }
+
+  if (bestPolys.length) return bestPolys;
+  const fallback = scaleAndAlignPolygon(poly, targetArea, alignMode, ref, alignBasis);
+  return intersectPolygonsWithEnvelope([fallback], ref);
+}
+
+function clip3DPolygonByVerticalHalfPlane(poly, P, N) {
+  if (!Array.isArray(poly) || poly.length < 3 || !P || !N) return [];
+  const out = [];
+  const signed = pt => (pt.x - P.x) * N.x + (pt.z - P.z) * N.z;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const da = signed(a), db = signed(b);
+    const aIn = da >= -1e-6, bIn = db >= -1e-6;
+    if (aIn) out.push(a.clone());
+    if (aIn !== bIn) {
+      const t = da / (da - db || 1e-12);
+      out.push(new THREE.Vector3(
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t
+      ));
+    }
+  }
+  return out.length >= 3 ? out : [];
+}
+
+function createMeshFrom3DPolygon(poly, material) {
+  if (!Array.isArray(poly) || poly.length < 3) return null;
+  const vertices = [];
+  for (let i = 1; i < poly.length - 1; i++) {
+    const tri = [poly[0], poly[i], poly[i + 1]];
+    for (const p of tri) vertices.push(p.x, p.y, p.z);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+  return new THREE.Mesh(geo, material);
+}
+
+function createSlantMesh(width, r, startPoint, slopeFactor, heightLimit, clipHalfPlanes = null) {
+  if (!r || !startPoint || !Number.isFinite(slopeFactor) || slopeFactor <= 0 || !Number.isFinite(heightLimit)) return null;
+  const sDir = new THREE.Vector3(-r.Nf.z, 0, r.Nf.x).normalize(), depthAtLimit = heightLimit / slopeFactor;
+  const base1 = startPoint.clone().add(sDir.clone().multiplyScalar(width / 2));
+  const base2 = startPoint.clone().sub(sDir.clone().multiplyScalar(width / 2));
+  const h1 = r.H_center + (base1.clone().sub(r.actualPf).dot(r.u)) * r.gradient;
+  const h2 = r.H_center + (base2.clone().sub(r.actualPf).dot(r.u)) * r.gradient;
+  const p1 = new THREE.Vector3(base1.x, h1, base1.z), p2 = new THREE.Vector3(base2.x, h2, base2.z);
+  const p3 = p2.clone().add(r.Nf.clone().multiplyScalar(depthAtLimit)).add(new THREE.Vector3(0, heightLimit, 0));
+  const p4 = p1.clone().add(r.Nf.clone().multiplyScalar(depthAtLimit)).add(new THREE.Vector3(0, heightLimit, 0));
+  let poly3d = [p1, p2, p3, p4];
+  if (Array.isArray(clipHalfPlanes)) {
+    for (const hp of clipHalfPlanes) {
+      poly3d = clip3DPolygonByVerticalHalfPlane(poly3d, hp.P, hp.N);
+      if (poly3d.length < 3) return null;
+    }
+  }
+  return createMeshFrom3DPolygon(poly3d, new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
+}
+
+function createAdjSlantMesh(width, adjData, startPoint, slopeFactor, baseHeight, heightLimit) {
+  if (!startPoint || !Number.isFinite(slopeFactor) || slopeFactor <= 0 || !Number.isFinite(baseHeight) || !Number.isFinite(heightLimit)) return null;
+  const sDir = new THREE.Vector3(-adjData.Nf.z, 0, adjData.Nf.x).normalize(), depthAtLimit = (heightLimit - baseHeight) / slopeFactor;
+  const base1 = startPoint.clone().add(sDir.clone().multiplyScalar(width / 2));
+  const base2 = startPoint.clone().sub(sDir.clone().multiplyScalar(width / 2));
+  const p1 = new THREE.Vector3(base1.x, baseHeight, base1.z), p2 = new THREE.Vector3(base2.x, baseHeight, base2.z);
+  const p3 = p2.clone().add(adjData.Nf.clone().multiplyScalar(depthAtLimit)).add(new THREE.Vector3(0, heightLimit - baseHeight, 0));
+  const p4 = p1.clone().add(adjData.Nf.clone().multiplyScalar(depthAtLimit)).add(new THREE.Vector3(0, heightLimit - baseHeight, 0));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    p1.x,p1.y,p1.z,p2.x,p2.y,p2.z,p3.x,p3.y,p3.z,
+    p1.x,p1.y,p1.z,p3.x,p3.y,p3.z,p4.x,p4.y,p4.z
+  ]), 3));
+  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
+}
+
+function createNorthSlantMesh(width, nl, vNorth, limitH) {
+  const dir = new THREE.Vector3().subVectors(nl.p2, nl.p1).normalize();
+  const mid = new THREE.Vector3().addVectors(nl.p1, nl.p2).multiplyScalar(0.5);
+  const base1 = mid.clone().add(dir.clone().multiplyScalar(width/2));
+  const base2 = mid.clone().sub(dir.clone().multiplyScalar(width/2));
+  const p1 = new THREE.Vector3(base1.x, nl.height, base1.z);
+  const p2 = new THREE.Vector3(base2.x, nl.height, base2.z);
+  const hDiff = limitH - nl.height;
+  if (hDiff <= 0) return null;
+  const shiftVec = vNorth.clone().multiplyScalar(hDiff / nl.slope);
+
+  const p3 = p2.clone().sub(shiftVec).add(new THREE.Vector3(0, hDiff, 0));
+  const p4 = p1.clone().sub(shiftVec).add(new THREE.Vector3(0, hDiff, 0));
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    p1.x,p1.y,p1.z,p2.x,p2.y,p2.z,p3.x,p3.y,p3.z,
+    p1.x,p1.y,p1.z,p3.x,p3.y,p3.z,p4.x,p4.y,p4.z
+  ]), 3));
+  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false }));
+}
+
+function distancePointToSegment2D(pt, a, b) {
+  const vx = b.x - a.x, vz = b.z - a.z;
+  const lenSq = vx * vx + vz * vz;
+  if (lenSq < 1e-12) return Math.hypot(pt.x - a.x, pt.z - a.z);
+  let t = ((pt.x - a.x) * vx + (pt.z - a.z) * vz) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(pt.x - (a.x + vx * t), pt.z - (a.z + vz * t));
+}
+
+function isPointInPolygonOrOnBoundary(pt, poly, eps = 1e-4) {
+  if (!poly || poly.length < 3) return false;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (distancePointToSegment2D(pt, a, b) <= eps) return true;
+  }
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const pi = poly[i], pj = poly[j];
+    const intersect = ((pi.z > pt.z) !== (pj.z > pt.z)) &&
+      (pt.x < (pj.x - pi.x) * (pt.z - pi.z) / ((pj.z - pi.z) || 1e-12) + pi.x);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function segmentIntersectionT(a, b, c, d) {
+  const rx = b.x - a.x, rz = b.z - a.z;
+  const sx = d.x - c.x, sz = d.z - c.z;
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-9) return null;
+  const qpx = c.x - a.x, qpz = c.z - a.z;
+  const t = (qpx * sz - qpz * sx) / den;
+  const u = (qpx * rz - qpz * rx) / den;
+  if (t >= -1e-7 && t <= 1 + 1e-7 && u >= -1e-7 && u <= 1 + 1e-7) return Math.max(0, Math.min(1, t));
+  return null;
+}
+
+function clipSegmentToPolygon(p1, p2, clipPoly) {
+  if (!clipPoly || clipPoly.length < 3) return [{ p1, p2 }];
+  const ts = [0, 1];
+  for (let i = 0; i < clipPoly.length; i++) {
+    const a = clipPoly[i], b = clipPoly[(i + 1) % clipPoly.length];
+    const t = segmentIntersectionT(p1, p2, a, b);
+    if (t !== null) ts.push(t);
+  }
+  const unique = [...new Set(ts.map(t => Number(t.toFixed(7))))].sort((a, b) => a - b);
+  const out = [];
+  const lerp = t => ({ x: p1.x + (p2.x - p1.x) * t, y: 0, z: p1.z + (p2.z - p1.z) * t });
+  for (let i = 0; i < unique.length - 1; i++) {
+    const t0 = unique[i], t1 = unique[i + 1];
+    if (t1 - t0 < 1e-5) continue;
+    const mid = lerp((t0 + t1) / 2);
+    if (isPointInPolygonOrOnBoundary(mid, clipPoly, 1e-3)) {
+      out.push({ p1: new THREE.Vector3(lerp(t0).x, 0, lerp(t0).z), p2: new THREE.Vector3(lerp(t1).x, 0, lerp(t1).z) });
+    }
+  }
+  if (!out.length && isPointInPolygonOrOnBoundary({ x: (p1.x + p2.x) / 2, z: (p1.z + p2.z) / 2 }, clipPoly, 1e-3)) {
+    out.push({ p1, p2 });
+  }
+  return out;
+}
+
+function drawDashWithLabel(p1, p2, dist, name, type, clipPoly = null) {
+  if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return;
+  const baseSegments = clipPoly && clipPoly.length >= 3 ? clipSegmentToPolygon(p1, p2, clipPoly) : [{ p1, p2 }];
+  const segments = baseSegments.filter(seg => Math.hypot(seg.p2.x - seg.p1.x, seg.p2.z - seg.p1.z) > 0.05);
+  if (!segments.length) return;
+
+  let labelSeg = segments[0];
+  let labelLen = -1;
+  for (const seg of segments) {
+    const len = Math.hypot(seg.p2.x - seg.p1.x, seg.p2.z - seg.p1.z);
+    if (len > labelLen) { labelLen = len; labelSeg = seg; }
+    const g = new THREE.BufferGeometry().setFromPoints([seg.p1, seg.p2]);
+    const lineColor = type === 'road' ? 0x3b82f6 : type === 'minashi' ? 0x8b5cf6 : type === 'light' ? 0x10b981 : 0xef4444;
+    const l = new THREE.Line(g, new THREE.LineDashedMaterial({ color: lineColor, dashSize: 1, gapSize: 0.5, depthTest: false, transparent: true }));
+    l.computeLineDistances();
+    l.position.y = 0.5;
+    siteLabelsGroup.add(l);
+  }
+
+  const div = document.createElement('div');
+  div.className = `boundary-label boundary-${type}`;
+  div.textContent = dist > 0 ? `${name} (${dist}m)` : name;
+  const label = new CSS2DObject(div);
+  label.position.set((labelSeg.p1.x + labelSeg.p2.x) / 2, 0.5, (labelSeg.p1.z + labelSeg.p2.z) / 2);
+  siteLabelsGroup.add(label);
+}
+
+
+const ONE_ROOM_LIGHT = {
+  roomArea: 25,
+  windowWidth: 1.6,
+  windowHeight: 1.8,
+  windowCenterFromFloor: 1.4
+};
+ONE_ROOM_LIGHT.requiredArea = ONE_ROOM_LIGHT.roomArea / 7;
+ONE_ROOM_LIGHT.windowArea = ONE_ROOM_LIGHT.windowWidth * ONE_ROOM_LIGHT.windowHeight;
+ONE_ROOM_LIGHT.requiredK = ONE_ROOM_LIGHT.requiredArea / ONE_ROOM_LIGHT.windowArea;
+
+function getLightCoeffParams(zoneCode) {
+  const normalized = normalizeZoneType(zoneCode);
+  const zone = getZoneRule(normalized);
+  if (zone.group === 'residential') return { a: 6.0, b: 1.4, label: '住居系' };
+  if (['junkogyo', 'kogyo', 'kogyosenyo'].includes(normalized)) return { a: 8.0, b: 1.0, label: '工業系' };
+  return { a: 10.0, b: 1.0, label: '商業系' };
+}
+
+function getOneRoomLightVerticalH(floorData, buildingTopY) {
+  if (!floorData) return ONE_ROOM_LIGHT.windowCenterFromFloor;
+  // 採光関係比率のHは「地盤から窓までの高さ」ではなく、
+  // 窓中心から直上の建築物部分までの垂直距離として扱う。
+  // 簡易版では対象階の窓中心から建物最高部（パラペット含む）までの距離で判定する。
+  const windowCenterY = (Number(floorData.y_bottom) || 0) + ONE_ROOM_LIGHT.windowCenterFromFloor;
+  const h = (Number(buildingTopY) || windowCenterY) - windowCenterY;
+  return Math.max(0.1, h);
+}
+
+function getCurrentDistanceFromEdgeToFloorPolys(edge, floorPolys) {
+  if (!edge || !edge.Nf || !Array.isArray(floorPolys)) return 0;
+  let minD = Infinity;
+  for (const poly of floorPolys) {
+    for (const p of poly) {
+      const d = (p.x - edge.p1.x) * edge.Nf.x + (p.z - edge.p1.z) * edge.Nf.z;
+      if (Number.isFinite(d) && d >= -0.05) minD = Math.min(minD, d);
+    }
+  }
+  return Number.isFinite(minD) ? Math.max(0, minD) : 0;
+}
+
+function buildLightEdgeData(basePoly, roads, adjLines, setbacks) {
+  const clean = sanitizePolygon(basePoly);
+  if (clean.length < 3) return [];
+  let signedArea = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const a = clean[i], b = clean[(i + 1) % clean.length];
+    signedArea += a.x * b.z - b.x * a.z;
+  }
+  const sign = Math.sign(signedArea) || 1;
+  const edgeList = [];
+  for (let i = 0; i < clean.length; i++) {
+    const p1 = clean[i], p2 = clean[(i + 1) % clean.length];
+    const road = (roads || []).find(r => r.edgeIndex === i);
+    const adj = (adjLines || []).find(a => a.edgeIndex === i);
+    const dx = p2.x - p1.x, dz = p2.z - p1.z, len = Math.hypot(dx, dz);
+    let Nf = road?.Nf || adj?.Nf;
+    if (!Nf) {
+      Nf = len > 1e-5 ? new THREE.Vector3(-sign * dz / len, 0, sign * dx / len) : new THREE.Vector3(0, 0, 1);
+    }
+    const type = road ? (i === 0 ? 'front' : 'second') : 'adjacent';
+    const suffix = type === 'front' ? '前面道路' : type === 'second' ? '第2道路' : '隣地';
+    edgeList.push({
+      index: i,
+      label: `辺${i + 1} ${suffix}`,
+      type,
+      p1: new THREE.Vector3(p1.x, 0, p1.z),
+      p2: new THREE.Vector3(p2.x, 0, p2.z),
+      Nf: Nf.clone ? Nf.clone().normalize() : new THREE.Vector3(Nf.x, 0, Nf.z).normalize(),
+      setback: Number.isFinite(setbacks?.[i]) ? setbacks[i] : 0
+    });
+  }
+  return edgeList;
+}
+
+function updateLightEdgeSelectOptions() {
+  const select = q('lightEdgeSelect');
+  if (!select) return;
+  const current = select.value;
+  let html = '<option value="">辺を選択</option>';
+  latestLightEdges.forEach(edge => {
+    const hint = edge.type === 'adjacent' ? '' : '（道路側）';
+    html += `<option value="${edge.index}">${edge.label}${hint}</option>`;
+  });
+  select.innerHTML = html;
+  if (current !== '' && latestLightEdges.some(e => String(e.index) === String(current))) select.value = current;
+}
+
+function renderOneRoomLightCheck(finalExempt, zoneCode, basePolyForClip = null) {
+  const resultBox = q('oneRoomLightResult');
+  if (!resultBox) return;
+  if (!lightCheckActive) return;
+  const selectedRaw = q('lightEdgeSelect')?.value;
+  const selectedIndex = selectedRaw === '' ? NaN : parseInt(selectedRaw, 10);
+  const edge = latestLightEdges.find(e => e.index === selectedIndex);
+  if (!edge) {
+    resultBox.classList.remove('hidden');
+    resultBox.innerHTML = '<div class="rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-emerald-700 font-bold text-center relative pr-20">採光対象辺を選択してください。<button id="closeLightCheckBtn" class="absolute top-2 right-2 rounded-full bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 text-[10px] font-black">閉じる ×</button></div>';
+    bindCloseLightCheckButton();
+    return;
+  }
+
+  const params = getLightCoeffParams(zoneCode);
+  const requiredDH = (ONE_ROOM_LIGHT.requiredK + params.b) / params.a;
+  const startFloor = finalExempt > 0.01 ? 2 : 1;
+  const parapetH = parseFloat(inputs.parapetHeight?.value) || 0;
+  const highestFloorTop = allFloorsData.reduce((maxY, f) => Math.max(maxY, Number(f.y_top) || 0), 0);
+  const buildingTopY = highestFloorTop + parapetH;
+  const residentialFloor = allFloorsData.find(f => f.floor === startFloor) || allFloorsData.find(f => f.floor > startFloor) || null;
+  const rows = [];
+  let maxRequiredD = 0;
+  let maxAddSb = 0;
+
+  if (residentialFloor) {
+    const H = getOneRoomLightVerticalH(residentialFloor, buildingTopY);
+    const requiredD = H * requiredDH;
+    const currentD = getCurrentDistanceFromEdgeToFloorPolys(edge, residentialFloor.polygons);
+    const addSb = Math.max(0, requiredD - currentD);
+    const kNow = (currentD / Math.max(H, 0.01)) * params.a - params.b;
+    const status = addSb <= 0.05 ? 'OK' : addSb <= 1.0 ? '注意' : '厳しい';
+    rows.push({ floor: residentialFloor.floor, H, requiredD, currentD, addSb, kNow, status });
+    maxRequiredD = requiredD;
+    maxAddSb = addSb;
+  }
+
+  if (maxRequiredD > 0 && edge.p1 && edge.p2) {
+    const p1 = edge.p1.clone().add(edge.Nf.clone().multiplyScalar(maxRequiredD));
+    const p2 = edge.p2.clone().add(edge.Nf.clone().multiplyScalar(maxRequiredD));
+    drawDashWithLabel(p1, p2, maxRequiredD.toFixed(2), `採光SB ${edge.label}`, 'light', basePolyForClip);
+  }
+
+  const statusClass = maxAddSb <= 0.05 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : maxAddSb <= 1.0 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
+  const rowHtml = rows.length ? rows.map(r => {
+    const c = r.status === 'OK' ? 'text-emerald-700' : r.status === '注意' ? 'text-amber-700' : 'text-red-700';
+    return `<tr class="border-t border-zinc-100"><td class="py-1.5 font-bold">${r.floor}F</td><td>${r.H.toFixed(2)}m</td><td>${r.requiredD.toFixed(2)}m</td><td>${r.currentD.toFixed(2)}m</td><td class="font-black ${c}">${r.addSb.toFixed(2)}m</td><td class="font-bold ${c}">${r.status}</td></tr>`;
+  }).join('') : '<tr><td colspan="6" class="py-2 text-center text-zinc-500">居宅開始階がありません。</td></tr>';
+
+  resultBox.classList.remove('hidden');
+  resultBox.innerHTML = `
+    <div class="rounded-xl border ${statusClass} p-3">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <div class="font-black">ワンルーム採光チェック</div>
+        <div class="flex items-center gap-2">
+          <div class="text-[10px] font-black">居宅開始階 追加SB ${maxAddSb.toFixed(2)}m</div>
+          <button id="closeLightCheckBtn" class="rounded-full bg-white/90 border border-current/20 px-2 py-0.5 text-[10px] font-black hover:bg-white transition-colors" title="閉じる">閉じる ×</button>
+        </div>
+      </div>
+      <div class="text-[10px] leading-relaxed mb-2">
+        想定：25㎡ / 窓1.6×1.8m / 必要K ${ONE_ROOM_LIGHT.requiredK.toFixed(2)} / ${params.label}<br>
+        対象：${edge.label} / 居宅開始階：${startFloor}階${startFloor === 2 ? '（1階車庫緩和あり）' : ''}<br>
+        簡易判定のため、居宅開始階のみをチェックします。この階がOKなら上階は原則OK扱いです。
+      </div>
+      <table class="w-full text-center bg-white/70 rounded-lg overflow-hidden">
+        <thead class="text-[10px] text-zinc-500"><tr><th class="py-1">階</th><th>H</th><th>必要D</th><th>現在D</th><th>追加SB</th><th>判定</th></tr></thead>
+        <tbody>${rowHtml}</tbody>
+      </table>
+    </div>`;
+  bindCloseLightCheckButton();
+}
+
+function updateTraceMesh() {
+  const ts = q('traceScale'), tr = q('traceRot'), tx = q('traceX'), tz = q('traceZ');
+  if (!traceMesh || !ts) return;
+  const s = parseFloat(ts.value) || 1, r = parseFloat(tr.value) || 0;
+  const x = parseFloat(tx.value) || 0, z = parseFloat(tz.value) || 0;
+
+  traceMesh.scale.set(s, s, 1);
+  traceMesh.rotation.set(-Math.PI / 2, 0, -THREE.MathUtils.degToRad(r));
+  traceMesh.position.set(x, -0.05, z);
+  traceMesh.material.opacity = parseFloat(inputs.traceOpacity?.value || 0.5);
+  traceMesh.visible = !!inputs.traceToggle?.checked;
+}
+
+function updateAdjSetbackUI() {
+  const floorCount = parseInt(inputs.floorCount?.value || 6, 10);
+  const defaultSetback = floorCount >= 3 ? 1.0 : 0.5;
+  const container = q('adjSetbackInputs');
+  if (!container) return;
+
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    let html = '<div class="grid grid-cols-2 gap-2">';
+    for (let i = 1; i < customSitePolygon.length; i++) {
+      if (customSiteRoad2Index === i) {
+        html += `<div class="opacity-50"><label class="text-[11px] font-bold text-blue-600 block mb-1 text-center">辺${i + 1} (第2道路)</label><input class="input text-center bg-zinc-100" value="${inputs.setbackRoad2?.value || 0}" disabled></div>`;
+      } else {
+        const el = q(`setbackPoly${i}`);
+        const parsed = el ? parseFloat(el.value) : NaN;
+        const val = !isNaN(parsed) ? Math.max(0, parsed) : defaultSetback;
+        html += `<div><label class="text-[11px] font-bold text-red-600 block mb-1 text-center">辺${i + 1}</label><input type="number" id="setbackPoly${i}" class="input text-center" value="${val}" step="0.1" min="0"></div>`;
+      }
+    }
+    container.innerHTML = html + '</div>';
+  } else {
+    const sbB = getVal('setbackBack', defaultSetback);
+    const sbL = getVal('setbackLeft', defaultSetback);
+    const sbR = getVal('setbackRight', defaultSetback);
+    container.innerHTML = `
+      <div class="space-y-2">
+        <div><label class="text-[11px] font-bold text-zinc-500 block mb-1 text-center">背面 (m)</label><input type="number" id="setbackBack" class="input text-center" value="${Math.max(0, sbB)}" step="0.1" min="0"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="text-[11px] font-bold text-zinc-500 block mb-1 text-center">左側 (m)</label><input type="number" id="setbackLeft" class="input text-center" value="${Math.max(0, sbL)}" step="0.1" min="0"></div>
+          <div><label class="text-[11px] font-bold text-zinc-500 block mb-1 text-center">右側 (m)</label><input type="number" id="setbackRight" class="input text-center" value="${Math.max(0, sbR)}" step="0.1" min="0"></div>
+        </div>
+      </div>`;
+  }
+}
+
+function cleanupScene() {
+  allFloorsData = [];
+  [siteMesh, roadMesh, road2Mesh].forEach(safeRemove);
+  volumeMeshes.forEach(safeRemove);
+  volumeMeshes = [];
+  disposeGroupChildren(siteLabelsGroup);
+  disposeGroupChildren(orthoEdgesGroup);
+  disposeGroupChildren(moduleGridGroup);
+}
+
+function renderBuildingMeshes() {
+  const bldgMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.3, metalness: 0.2, roughness: 0.1 });
+  allFloorsData.forEach(d => {
+    d.polygons.forEach(poly => {
+      if (poly.length < 3 || d.y_top - d.y_bottom <= 0 || getPolygonArea(poly) < MIN_FLOOR_POLYGON_AREA) return;
+      const shp = new THREE.Shape();
+      shp.moveTo(poly[0].x, -poly[0].z);
+      for (let i = 1; i < poly.length; i++) shp.lineTo(poly[i].x, -poly[i].z);
+
+      try {
+        const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: d.y_top - d.y_bottom, bevelEnabled: false }), bldgMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = d.y_bottom;
+        mesh.userData = { floor: d.floor };
+        scene.add(mesh);
+        volumeMeshes.push(mesh);
+
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x1e3a8a }));
+        edges.rotation.x = -Math.PI / 2;
+        edges.position.y = d.y_bottom;
+        edges.userData = { floor: d.floor };
+        orthoEdgesGroup.add(edges);
+      } catch (e) {
+        console.warn("Building Extrusion Failed", e);
+      }
+    });
+  });
+}
+
+function updateResultPanels(finalFootprintArea, tFloorArea, finalCountableArea, effectiveSiteArea, appliedBcr, appliedFar, maxHeight) {
+  results.buildingArea.textContent = finalFootprintArea.toFixed(2);
+  results.grossArea.textContent = tFloorArea.toFixed(2);
+
+  const actualBcrPercent = effectiveSiteArea > 0 ? finalFootprintArea / effectiveSiteArea * 100 : 0;
+  const actualFarPercent = effectiveSiteArea > 0 ? finalCountableArea / effectiveSiteArea * 100 : 0;
+
+  results.resultBCR.textContent = actualBcrPercent.toFixed(2);
+  results.resultFAR.textContent = actualFarPercent.toFixed(2);
+  results.resultFloorCount.textContent = allFloorsData.length;
+  results.resultBCR.classList.toggle('text-red-600', actualBcrPercent > appliedBcr + 0.1);
+  results.resultFAR.classList.toggle('text-red-600', actualFarPercent > appliedFar + 0.1);
+
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  allFloorsData.forEach(d => d.polygons.forEach(poly => poly.forEach(p => {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+  })));
+
+  const bWidth = allFloorsData.length && maxX !== -Infinity ? maxX - minX : 0;
+  const bDepth = allFloorsData.length && maxZ !== -Infinity ? maxZ - minZ : 0;
+
+  results.bldgMaxWidth.textContent = bWidth.toFixed(2);
+  results.bldgMaxDepth.textContent = bDepth.toFixed(2);
+  const spanElW = q('bldgMaxWidthSpan'), spanElD = q('bldgMaxDepthSpan');
+  if (spanElW) spanElW.textContent = Math.floor(bWidth / 3.5) > 0 ? `(3.5m×${Math.floor(bWidth / 3.5)}ｽﾊﾟﾝ)` : '';
+  if (spanElD) spanElD.textContent = Math.floor(bDepth / 3.5) > 0 ? `(3.5m×${Math.floor(bDepth / 3.5)}ｽﾊﾟﾝ)` : '';
+  results.bldgMaxHeight.textContent = maxHeight.toFixed(2);
+
+  applyFloorVisibility();
+}
+
+function updateScene() {
+  if (!scene || !inputs.bcr) return;
+  cleanupScene();
+
+  const showRoadSlant = inputs.toggleRoadSlant?.checked;
+  const showAdjSlant = inputs.toggleAdjSlant?.checked;
+  const showNorthSlant = inputs.toggleNorthSlant?.checked;
+  const showSetbackLine = inputs.toggleSetbackLine?.checked;
+
+  const sw = getVal('siteWidth', 1), sd = getVal('siteDepth', 1), sArea = getVal('inputSiteArea', 0);
+  const drawExtent = Math.max(sw, sd) * 2 + 100;
+
+  const road1W = getVal('roadWidth', 0);
+  const isRoad1_2ko = road1W > 0 && road1W < 4;
+  const r1EffectiveW = Math.max(road1W, 4);
+  const r1Grad = 0, r1HCenter = 0;
+  const r2HCenter = 0;
+
+  const basePoly = (customSitePolygon && customSitePolygon.length >= 3) ? customSitePolygon.map(p => ({ x: p.x, z: p.z })) :
+    [{ x:-sw/2, z:-sd/2 }, { x: sw/2, z:-sd/2 }, { x: sw/2, z:sd/2 }, { x:-sw/2, z:sd/2 }];
+
+  const zone = getZoneRule(normalizeZoneType(inputs.zoneType?.value));
+  const isResidentialZone = zone.group === 'residential', rSlope = zone.roadSlope, farMultiplier = zone.farRoadCoeff;
+  const has2 = inputs.hasRoad2?.checked, road2W = getVal('road2Width', 0), r2Pos = inputs.road2Pos?.value;
+  const sbRoadF = getVal('setbackFront', 0), sbRoad2 = getVal('setbackRoad2', 0);
+  const sbB = getVal('setbackBack', 0), sbL = getVal('setbackLeft', 0), sbR = getVal('setbackRight', 0);
+  const manualGarageArea = getVal('garageArea', 0);
+
+  const reqSb1 = (road1W > 0 && road1W < 4) ? Math.max(0, 2 - (road1W / 2)) : 0;
+  const actualSb1 = Math.max(reqSb1, sbRoadF);
+  const slantOriginDist1 = Math.max(road1W, 4) - reqSb1 + Math.max(0, actualSb1 - reqSb1);
+
+  const reqSb2 = (has2 && road2W > 0 && road2W < 4) ? Math.max(0, 2 - (road2W / 2)) : 0;
+  const actualSb2 = Math.max(reqSb2, sbRoad2);
+  const slantOriginDist2 = Math.max(road2W, 4) - reqSb2 + Math.max(0, actualSb2 - reqSb2);
+
+  let Nf1 = new THREE.Vector3(0,0,1), Pf1 = new THREE.Vector3(0,0,-sd/2);
+  let r1p1 = new THREE.Vector3(-sw/2,0,-sd/2), r1p2 = new THREE.Vector3(sw/2,0,-sd/2);
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    const dx = customSitePolygon[1].x - customSitePolygon[0].x, dz = customSitePolygon[1].z - customSitePolygon[0].z;
+    const len = Math.hypot(dx, dz);
+    let signedArea = 0;
+    for (let i = 0; i < customSitePolygon.length; i++) {
+      const pa = customSitePolygon[i], pb = customSitePolygon[(i + 1) % customSitePolygon.length];
+      signedArea += pa.x * pb.z - pb.x * pa.z;
+    }
+    const sign = Math.sign(signedArea) || 1;
+    if (len > 1e-5) {
+      Nf1 = new THREE.Vector3(-sign * dz / len, 0, sign * dx / len);
+    } else {
+      Nf1 = new THREE.Vector3(0, 0, 1);
+    }
+    Pf1 = new THREE.Vector3((customSitePolygon[0].x + customSitePolygon[1].x) / 2, 0, (customSitePolygon[0].z + customSitePolygon[1].z) / 2);
+    r1p1 = new THREE.Vector3(customSitePolygon[0].x, 0, customSitePolygon[0].z);
+    r1p2 = new THREE.Vector3(customSitePolygon[1].x, 0, customSitePolygon[1].z);
+  }
+
+  const roads = [{
+    edgeIndex: 0, width: road1W, effectiveWidth: r1EffectiveW, Nf: Nf1, Pf: Pf1.clone().add(Nf1.clone().multiplyScalar(actualSb1)), actualPf: Pf1.clone(), setback: actualSb1, reqSb: reqSb1, slantOriginDist: slantOriginDist1,
+    H_center: r1HCenter, u: new THREE.Vector3(Nf1.z, 0, -Nf1.x), gradient: r1Grad, p1: r1p1, p2: r1p2, is2ko: isRoad1_2ko
+  }];
+
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    if (customSiteRoad2Index > 0) {
+      const i = customSiteRoad2Index;
+      const p1 = customSitePolygon[i], p2 = customSitePolygon[(i + 1) % customSitePolygon.length];
+      let signedArea = 0;
+      for (let k = 0; k < customSitePolygon.length; k++) {
+        const pa = customSitePolygon[k], pb = customSitePolygon[(k + 1) % customSitePolygon.length];
+        signedArea += pa.x * pb.z - pb.x * pa.z;
+      }
+      const sign = Math.sign(signedArea) || 1, dx = p2.x - p1.x, dz = p2.z - p1.z, len = Math.hypot(dx, dz);
+
+      let r2N;
+      if (len > 1e-5) {
+        r2N = new THREE.Vector3(-sign * dz / len, 0, sign * dx / len);
+      } else {
+        r2N = new THREE.Vector3(0, 0, 1);
+      }
+
+      const r2Pactual = new THREE.Vector3((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+      roads.push({
+        edgeIndex: i, width: road2W, effectiveWidth: Math.max(road2W, 4), Nf: r2N, Pf: r2Pactual.clone().add(r2N.clone().multiplyScalar(actualSb2)),
+        actualPf: r2Pactual.clone(), setback: actualSb2, reqSb: reqSb2, slantOriginDist: slantOriginDist2, H_center: r2HCenter, u: new THREE.Vector3(r2N.z, 0, -r2N.x),
+        gradient: 0, p1: new THREE.Vector3(p1.x,0,p1.z), p2: new THREE.Vector3(p2.x,0,p2.z), is2ko: road2W > 0 && road2W < 4
+      });
+    }
+  } else if (has2) {
+    let r2N = new THREE.Vector3(0,0,-1), r2Pactual = new THREE.Vector3(0,0,sd/2), r2Len = sw;
+    let p1 = new THREE.Vector3(sw/2, 0, sd/2), p2 = new THREE.Vector3(-sw/2, 0, sd/2);
+    if (r2Pos === 'left') {
+      r2N = new THREE.Vector3(1,0,0); r2Pactual = new THREE.Vector3(-sw/2,0,0); r2Len = sd;
+      p1 = new THREE.Vector3(-sw/2, 0, sd/2); p2 = new THREE.Vector3(-sw/2, 0, -sd/2);
+    }
+    if (r2Pos === 'right') {
+      r2N = new THREE.Vector3(-1,0,0); r2Pactual = new THREE.Vector3(sw/2,0,0); r2Len = sd;
+      p1 = new THREE.Vector3(sw/2, 0, -sd/2); p2 = new THREE.Vector3(sw/2, 0, sd/2);
+    }
+    roads.push({
+      edgeIndex: (r2Pos === 'right' ? 1 : r2Pos === 'back' ? 2 : 3), width: road2W, effectiveWidth: Math.max(road2W, 4), Nf: r2N, Pf: r2Pactual.clone().add(r2N.clone().multiplyScalar(actualSb2)), actualPf: r2Pactual.clone(), setback: actualSb2,
+      reqSb: reqSb2, slantOriginDist: slantOriginDist2,
+      H_center: r2HCenter, u: new THREE.Vector3(r2N.z,0,-r2N.x), gradient: 0, p1: p1, p2: p2, is2ko: road2W > 0 && road2W < 4
+    });
+  }
+
+  const maxRoadWidth = Math.max(...roads.map(r => r.width));
+  const maxRoadEffectiveWidth = Math.max(...roads.map(r => r.effectiveWidth));
+  const mainRoad = roads.find(r => r.width === maxRoadWidth);
+  const rule132Distance = Math.min(maxRoadEffectiveWidth * 2, 35);
+  const hasRule132Mitigation = !!mainRoad && roads.some(r => r !== mainRoad && maxRoadWidth > r.width);
+  const adjLines = [];
+
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    let signedArea = 0;
+    for (let i = 0; i < customSitePolygon.length; i++) {
+      const pa = customSitePolygon[i], pb = customSitePolygon[(i + 1) % customSitePolygon.length];
+      signedArea += pa.x * pb.z - pb.x * pa.z;
+    }
+    const sign = Math.sign(signedArea) || 1;
+    for (let i = 1; i < customSitePolygon.length; i++) {
+      if (i === customSiteRoad2Index) continue;
+      const p1 = customSitePolygon[i], p2 = customSitePolygon[(i + 1) % customSitePolygon.length];
+      const dx = p2.x - p1.x, dz = p2.z - p1.z, len = Math.hypot(dx, dz);
+      let NfAdj;
+      if (len > 1e-5) {
+        NfAdj = new THREE.Vector3(-sign * dz / len, 0, sign * dx / len);
+      } else {
+        NfAdj = new THREE.Vector3(0, 0, 1);
+      }
+      const midP = new THREE.Vector3((p1.x + p2.x) / 2, 0, (p1.z + p2.z) / 2);
+      const sbVal = getVal(`setbackPoly${i}`, sbB);
+      adjLines.push({ edgeIndex: i, Nf: NfAdj, actualPf: midP, setback: sbVal, Pf: midP.clone().add(NfAdj.clone().multiplyScalar(sbVal)), p1: new THREE.Vector3(p1.x,0,p1.z), p2: new THREE.Vector3(p2.x,0,p2.z), name: `隣地後退(辺${i + 1})` });
+    }
+  } else {
+    if (!has2 || r2Pos !== 'back') adjLines.push({ edgeIndex: 2, Nf: new THREE.Vector3(0,0,-1), actualPf: new THREE.Vector3(0,0,sd/2), setback: sbB, Pf: new THREE.Vector3(0,0,sd/2 - sbB), p1: new THREE.Vector3(sw/2,0,sd/2), p2: new THREE.Vector3(-sw/2,0,sd/2), name: '隣地後退(背面)' });
+    if (!has2 || r2Pos !== 'left') adjLines.push({ edgeIndex: 3, Nf: new THREE.Vector3(1,0,0), actualPf: new THREE.Vector3(-sw/2,0,0), setback: sbL, Pf: new THREE.Vector3(-sw/2 + sbL,0,0), p1: new THREE.Vector3(-sw/2,0,sd/2), p2: new THREE.Vector3(-sw/2,0,-sd/2), name: '隣地後退(左側)' });
+    if (!has2 || r2Pos !== 'right') adjLines.push({ edgeIndex: 1, Nf: new THREE.Vector3(-1,0,0), actualPf: new THREE.Vector3(sw/2,0,0), setback: sbR, Pf: new THREE.Vector3(sw/2 - sbR,0,0), p1: new THREE.Vector3(sw/2,0,-sd/2), p2: new THREE.Vector3(sw/2,0,sd/2), name: '隣地後退(右側)' });
+  }
+
+  const applyNorth = inputs.applyNorthSlant?.checked;
+  const northAngleRad = (parseFloat(inputs.northAngle?.value) || 0) * Math.PI / 180;
+  const vNorth = new THREE.Vector3(Math.sin(northAngleRad), 0, -Math.cos(northAngleRad));
+  const northLines = [];
+
+  if (applyNorth && zone.northHeight !== null) {
+    const nH = zone.northHeight;
+    const nS = zone.northSlope;
+    for (const adj of adjLines) {
+      if (adj.Nf.dot(vNorth) > 0.05) northLines.push({ edgeIndex: adj.edgeIndex, p1: adj.p1, p2: adj.p2, Nf: adj.Nf, height: nH, slope: nS, setback: adj.setback });
+    }
+  }
+
+  const setbacks = new Array(basePoly.length).fill(0);
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    setbacks[0] = actualSb1;
+    for (let i = 1; i < basePoly.length; i++) setbacks[i] = i === customSiteRoad2Index ? actualSb2 : getVal(`setbackPoly${i}`, sbB);
+  } else {
+    setbacks[0] = actualSb1;
+    setbacks[1] = (has2 && r2Pos === 'right') ? actualSb2 : sbR;
+    setbacks[2] = (has2 && r2Pos === 'back') ? actualSb2 : sbB;
+    setbacks[3] = (has2 && r2Pos === 'left') ? actualSb2 : sbL;
+  }
+
+  latestLightEdges = buildLightEdgeData(basePoly, roads, adjLines, setbacks);
+  updateLightEdgeSelectOptions();
+
+  const roadSetbacksOnly = new Array(basePoly.length).fill(0);
+  const deductionSb1 = reqSb1;
+  const deductionSb2 = reqSb2;
+
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    roadSetbacksOnly[0] = deductionSb1;
+    if (customSiteRoad2Index > 0) roadSetbacksOnly[customSiteRoad2Index] = deductionSb2;
+  } else {
+    roadSetbacksOnly[0] = deductionSb1;
+    if (has2) {
+      if (r2Pos === 'right') roadSetbacksOnly[1] = deductionSb2;
+      else if (r2Pos === 'back') roadSetbacksOnly[2] = deductionSb2;
+      else if (r2Pos === 'left') roadSetbacksOnly[3] = deductionSb2;
+    }
+  }
+
+  let effectivePoly = applySetbacksToPolygon(basePoly, roadSetbacksOnly);
+  if (!effectivePoly || effectivePoly.length < 3) effectivePoly = sanitizePolygon(basePoly);
+
+  const basePolyArea = getPolygonArea(basePoly);
+  const effectivePolyArea = getPolygonArea(effectivePoly);
+  const setbackDeductionRatio = basePolyArea > 0 ? effectivePolyArea / basePolyArea : 1;
+  const effectiveSiteArea = sArea * setbackDeductionRatio;
+  const setbackArea = sArea - effectiveSiteArea;
+
+  if (results.setbackAreaResult) results.setbackAreaResult.textContent = Math.max(0, setbackArea).toFixed(2);
+
+  const effAreaBox = q('effectiveAreaBox');
+  if (effAreaBox) {
+    if (setbackDeductionRatio < 0.999) {
+      effAreaBox.classList.remove('hidden');
+      const effSpan = q('effectiveSiteArea');
+      if (effSpan) effSpan.textContent = effectiveSiteArea.toFixed(2);
+    } else {
+      effAreaBox.classList.add('hidden');
+    }
+  }
+
+  let currentBasePoly = applySetbacksToPolygon(basePoly, setbacks);
+  if (!currentBasePoly || currentBasePoly.length < 3) currentBasePoly = sanitizePolygon(basePoly);
+  const setbackDisplayPoly = currentBasePoly.map(p => ({ x: p.x, z: p.z }));
+
+  const baseBcr = getVal('bcr', 60);
+  const appliedBcr = inputs.cornerBcrToggle?.checked ? baseBcr + 10 : baseBcr;
+  const lbl = q('actualBcrValLabel');
+  if (lbl) lbl.textContent = appliedBcr.toFixed(0);
+  const footprintAreaMax = getPolygonArea(currentBasePoly);
+  const designatedFootprintArea = effectiveSiteArea * (appliedBcr / 100);
+  const bldgAlign = inputs.bldgAlign?.value || 'center';
+  const frontEdgeDir = new THREE.Vector3().subVectors(r1p2, r1p1).normalize();
+  const alignmentBasis = {
+    u: Number.isFinite(frontEdgeDir.x) && Number.isFinite(frontEdgeDir.z) ? { x: frontEdgeDir.x, z: frontEdgeDir.z } : { x: 1, z: 0 },
+    v: Number.isFinite(Nf1.x) && Number.isFinite(Nf1.z) ? { x: Nf1.x, z: Nf1.z } : { x: 0, z: 1 }
+  };
+
+  if (footprintAreaMax > designatedFootprintArea && designatedFootprintArea > 0) {
+    const fittedBasePolys = fitAlignedPolygonToArea(currentBasePoly, designatedFootprintArea, bldgAlign, currentBasePoly, alignmentBasis);
+    if (fittedBasePolys.length > 0) {
+      currentBasePoly = getLargestPolygon(fittedBasePolys);
+    } else {
+      const fittedCenter = fitAlignedPolygonToArea(currentBasePoly, designatedFootprintArea, 'center', currentBasePoly, alignmentBasis);
+      currentBasePoly = fittedCenter.length ? getLargestPolygon(fittedCenter) : currentBasePoly;
+    }
+  }
+  const finalFootprintArea = getPolygonArea(currentBasePoly);
+
+  let appliedFar = getVal('far', 400);
+  if (inputs.autoFarToggle?.checked && maxRoadEffectiveWidth < 12) appliedFar = Math.min(appliedFar, maxRoadEffectiveWidth * farMultiplier * 100);
+  const farLbl = q('actualFarVal');
+  if (farLbl) farLbl.textContent = appliedFar.toFixed(0);
+
+  const badges = [];
+  const createBadge = (label, keyword, colorClass, tooltipText) => {
+    return `
+      <div class="relative group inline-flex">
+        <span data-ai-keyword="${keyword}" class="cursor-pointer hover:scale-105 transition-all text-[10px] px-2 py-1 rounded border ${colorClass} font-bold shadow-sm flex items-center">
+          ${label}
+        </span>
+        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-[200px] bg-zinc-800 text-white text-[10px] p-2.5 rounded-xl shadow-xl z-50 pointer-events-none text-left whitespace-normal font-normal leading-relaxed">
+          ${tooltipText}
+          <div class="block text-indigo-300 mt-1.5 font-bold text-[9px] border-t border-zinc-600 pt-1.5">👆 クリックでAIが詳細解説</div>
+          <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-zinc-800"></div>
+        </div>
+      </div>
+    `;
+  };
+
+  if (reqSb1 > 0 || reqSb2 > 0) badges.push(createBadge('⚠️ 2項道路控除', '2項道路（セットバック）', 'border-red-200 bg-red-100 text-red-700 animate-pulse', '幅員4m未満の道路は、中心線から2mの位置まで敷地を後退（提供）させる必要があります。'));
+  if ((has2 || customSiteRoad2Index > 0) && roads.some(r => r.width < maxRoadWidth)) badges.push(createBadge('令132条', '建築基準法 第132条（2つ以上の前面道路がある場合の道路斜線のみなし幅員）', 'border-purple-200 bg-purple-100 text-purple-700', `広い道路の道路斜線を狭い道路側にみなして適用する区域です。このツールでは広い道路境界線から ${rule132Distance.toFixed(1)}m（2Aかつ35m以内）までを紫の境界線で表示します。`));
+  if (isResidentialZone && maxRoadWidth >= 12) badges.push(createBadge('12m以上緩和', '前面道路幅員が12m以上ある場合の容積率緩和', 'border-emerald-200 bg-emerald-100 text-emerald-700', '住居系地域で前面道路が12m以上の場合、特定の計算式により容積率の限度が緩和されます。'));
+  if (zone.adjHeight !== null) badges.push(createBadge('隣地斜線', '隣地斜線制限', 'border-orange-200 bg-orange-100 text-orange-700', '隣地の採光や通風を確保するため、一定の高さから発生する斜めの制限線です。後退距離（セットバック）がある場合はその分を緩和に加算し、不整形敷地では隣地境界線の辺ごとに個別判定します。'));
+  if (applyNorth && zone.northHeight !== null) badges.push(createBadge('北側斜線', '北側斜線制限', 'border-cyan-200 bg-cyan-100 text-cyan-700', '北側の隣人の日照を確保するため、真北方向にかかる厳しい斜線制限です。'));
+
+  let tFloorArea = 0, currentY = 0;
+  const designatedFarArea = effectiveSiteArea * (appliedFar / 100);
+  const fh1 = 3.0, fhStd = 2.8;
+  const floorCountLimit = parseInt(inputs.floorCount?.value || 6, 10);
+  const maxYEstimate = fh1 + Math.max(0, floorCountLimit - 1) * fhStd;
+  const siteExtentInfo = getPolygonExtentInfo(basePoly, drawExtent);
+  const roadSlantTangentPad = Math.max(5, siteExtentInfo.width, siteExtentInfo.depth, siteExtentInfo.diagonal) + Math.max(road1W, road2W, maxRoadEffectiveWidth, 5);
+  const roadSlantContexts = roads.map(r => {
+    const influenceDepth = Math.max(drawExtent * 2, rule132Distance + maxRoadEffectiveWidth + maxYEstimate / Math.max(0.1, rSlope) + 80);
+    const influenceEnvelope = createRoadEdgeInfluenceEnvelope(r, influenceDepth, roadSlantTangentPad, Math.max(road1W, road2W, maxRoadEffectiveWidth, 5) + 10);
+    const useRule132Only = maxRoadWidth > r.width && !!mainRoad;
+    const Psplit = useRule132Only ? mainRoad.Pf.clone().add(mainRoad.Nf.clone().multiplyScalar(rule132Distance)) : null;
+    const rSlantOriginDistMain = useRule132Only ? maxRoadEffectiveWidth - r.reqSb + Math.max(0, r.setback - r.reqSb) : 0;
+    return {
+      r,
+      influenceEnvelope,
+      useRule132Only,
+      Psplit,
+      minashiOriginBase: useRule132Only ? r.actualPf.clone().sub(r.Nf.clone().multiplyScalar(rSlantOriginDistMain)) : null,
+      normalOriginBase: r.actualPf.clone().sub(r.Nf.clone().multiplyScalar(r.slantOriginDist)),
+      slopeValDefault: (isResidentialZone && r.width >= 12) ? 1.5 : rSlope,
+      slopeValMinashi: (isResidentialZone && maxRoadWidth >= 12) ? 1.5 : rSlope
+    };
+  });
+
+  let previousFloorPolys = normalizeFloorPolys([clonePoly(currentBasePoly)]);
+
+  for (let i = 1; i <= floorCountLimit; i++) {
+    const fh = i === 1 ? fh1 : fhStd, yTop = currentY + fh;
+    let fPolys = normalizeFloorPolys(previousFloorPolys.map(clonePoly));
+    if (!fPolys.length) break;
+
+    for (const roadCtx of roadSlantContexts) {
+      const { r, influenceEnvelope, useRule132Only, Psplit, minashiOriginBase, normalOriginBase, slopeValDefault, slopeValMinashi } = roadCtx;
+      const newPolys = [];
+      const getClippedBySlope = (targetPoly, roadData, slopeVal, PoppArg) => {
+        const Nnew = new THREE.Vector3(slopeVal * roadData.Nf.x + roadData.gradient * roadData.u.x, 0, slopeVal * roadData.Nf.z + roadData.gradient * roadData.u.z);
+        const nLen = Nnew.length();
+        if (nLen <= 1e-8) return [targetPoly];
+        const C = yTop - roadData.H_center + (roadData.actualPf.dot(roadData.u) * roadData.gradient) + slopeVal * PoppArg.dot(roadData.Nf);
+        const Nn = Nnew.clone().normalize();
+        return clipPolygon(targetPoly, Nn.clone().multiplyScalar(C / nLen), Nn);
+      };
+
+      for (const poly of fPolys) {
+        const targetPieces = influenceEnvelope ? intersectPolygonsWithEnvelope([poly], influenceEnvelope) : [poly];
+        newPolys.push(...(influenceEnvelope ? subtractPolygonsByEnvelope([poly], influenceEnvelope) : []));
+
+        for (const targetPiece of targetPieces) {
+          if (useRule132Only) {
+            const minashiPieces = clipPolygon(targetPiece, Psplit, mainRoad.Nf.clone().negate());
+            if (minashiPieces.length) {
+              minashiPieces.forEach(polyMinashi => {
+                newPolys.push(...getClippedBySlope(polyMinashi, r, slopeValMinashi, minashiOriginBase));
+              });
+            }
+            clipPolygon(targetPiece, Psplit, mainRoad.Nf).forEach(polyOutside132 => newPolys.push(polyOutside132));
+          } else {
+            newPolys.push(...getClippedBySlope(targetPiece, r, slopeValDefault, normalOriginBase));
+          }
+        }
+      }
+      fPolys = normalizeFloorPolys(newPolys, ROAD_SLANT_SPLIT_MIN_AREA);
+      if (!fPolys.length) break;
+    }
+    if (!fPolys.length) break;
+
+    const setbacksAtY = [...setbacks];
+    if (zone.adjHeight !== null && zone.adjSlope !== null && yTop > zone.adjHeight) {
+      for (const adj of adjLines) {
+        const adjSetbackForRelaxation = Math.max(0, adj.setback || 0);
+        const slantRequiredFromBoundary = Math.max(0, ((yTop - zone.adjHeight) / zone.adjSlope) - adjSetbackForRelaxation);
+        const totalRequiredOffset = Math.max(adjSetbackForRelaxation, slantRequiredFromBoundary);
+        if (totalRequiredOffset > setbacksAtY[adj.edgeIndex]) setbacksAtY[adj.edgeIndex] = totalRequiredOffset;
+      }
+    }
+
+    if (northLines.length > 0) {
+      for (const nl of northLines) {
+        if (yTop > nl.height) {
+          const northReqDist = (yTop - nl.height) / nl.slope;
+          const cosTheta = nl.Nf.dot(vNorth);
+          if (cosTheta > 0.05) {
+            const totalRequiredOffset = Math.max(nl.setback, northReqDist * cosTheta);
+            if (totalRequiredOffset > setbacksAtY[nl.edgeIndex]) setbacksAtY[nl.edgeIndex] = totalRequiredOffset;
+          }
+        }
+      }
+    }
+
+    const allowedBasePolys = normalizeFloorPolys(applySetbacksToPolygonAll(basePoly, setbacksAtY));
+    fPolys = allowedBasePolys.length ? clipFloorPolysToEnvelopes(fPolys, allowedBasePolys) : [];
+    if (!fPolys.length) break;
+
+    fPolys = clipFloorPolysToEnvelope(fPolys, currentBasePoly);
+    let area = sumPolygonsArea(fPolys);
+    if (area < MIN_FLOOR_POLYGON_AREA) break;
+
+    const provisionalFloor1Area = (i === 1) ? area : (allFloorsData.length > 0 ? allFloorsData[0].area : 0);
+    const provisionalCore = Math.min(provisionalFloor1Area, Math.max(10, provisionalFloor1Area * 0.2));
+    const provisionalAvailableGarageAuto = Math.max(0, provisionalFloor1Area - provisionalCore);
+    const provisionalAvailableGarageManual = provisionalFloor1Area;
+    const provisionalGarageLimit = (tFloorArea + area) * 0.2;
+
+    const isAutoGarage = inputs.autoGarageToggle?.checked;
+    const provisionalExempt = isAutoGarage
+      ? Math.min(provisionalAvailableGarageAuto, provisionalGarageLimit)
+      : Math.min(manualGarageArea, Math.min(provisionalAvailableGarageManual, provisionalGarageLimit));
+
+    const potentialCountable = tFloorArea + area - provisionalExempt;
+
+    if (potentialCountable > designatedFarArea) {
+      const remainingCountable = designatedFarArea - (tFloorArea - (isAutoGarage ? Math.min(provisionalAvailableGarageAuto, tFloorArea * 0.2) : Math.min(manualGarageArea, Math.min(provisionalAvailableGarageManual, tFloorArea * 0.2))));
+      if (remainingCountable > MIN_FLOOR_POLYGON_AREA) {
+        let scaledPolys = [];
+        for (const p of fPolys) {
+          const pieceArea = getPolygonArea(p);
+          if (pieceArea < MIN_FLOOR_POLYGON_AREA) continue;
+          const fittedPieces = fitAlignedPolygonToArea(p, remainingCountable * (pieceArea / area), bldgAlign, p, alignmentBasis);
+          scaledPolys.push(...fittedPieces);
+        }
+        scaledPolys = clipFloorPolysToEnvelope(scaledPolys, currentBasePoly);
+        scaledPolys = clipFloorPolysToEnvelopes(scaledPolys, fPolys);
+        const clippedRemainingArea = sumPolygonsArea(scaledPolys);
+        if (clippedRemainingArea > MIN_FLOOR_POLYGON_AREA) {
+          allFloorsData.push({ floor:i, y_bottom:currentY, y_top:yTop, area:clippedRemainingArea, polygons:scaledPolys });
+          tFloorArea += clippedRemainingArea;
+          currentY = yTop;
+        }
+      }
+      break;
+    }
+
+    allFloorsData.push({ floor:i, y_bottom:currentY, y_top:yTop, area, polygons:fPolys });
+    previousFloorPolys = fPolys.map(clonePoly);
+    tFloorArea += area;
+    currentY = yTop;
+  }
+
+  const parapetH = 0.6;
+  const maxHeight = allFloorsData.length ? allFloorsData[allFloorsData.length - 1].y_top + parapetH : 0;
+
+  if (zone.shadowReg) {
+    const threshold = zone.shadowReg.includes('7m') ? 7 : 10;
+    if (maxHeight > threshold) {
+      badges.push(createBadge('⚠️日影規制 対象可能性大', '日影規制（日影による中高層の建築物の高さの制限）', 'border-red-500 bg-red-500 text-white animate-pulse', '建物の高さが一定以上のため、周囲へ落とす影の時間を制限する「日影規制」の対象となる可能性が高いです。'));
+    }
+  }
+  const badgeContainer = q('relaxationBadges');
+  if (badgeContainer) badgeContainer.innerHTML = badges.join('');
+
+  let floor1Area = allFloorsData.length > 0 ? allFloorsData[0].area : 0;
+  const coreArea = Math.min(floor1Area, Math.max(10, floor1Area * 0.2));
+  const availableGarageAreaAuto = Math.max(0, floor1Area - coreArea);
+  const availableGarageAreaManual = floor1Area;
+  const legalGarageLimit = tFloorArea * 0.2;
+
+  let finalExempt;
+  if (inputs.autoGarageToggle?.checked) {
+    finalExempt = Math.min(availableGarageAreaAuto, legalGarageLimit);
+    if(inputs.garageArea) inputs.garageArea.value = finalExempt.toFixed(2);
+  } else {
+    const maxGarageLimitManual = Math.min(availableGarageAreaManual, legalGarageLimit);
+    finalExempt = Math.min(manualGarageArea, maxGarageLimitManual);
+    if (manualGarageArea > maxGarageLimitManual && inputs.garageArea) inputs.garageArea.value = maxGarageLimitManual.toFixed(2);
+  }
+
+  const actExEl = q('actualExemptionVal');
+  if(actExEl) actExEl.textContent = finalExempt.toFixed(2);
+  const finalCountableArea = tFloorArea - finalExempt;
+
+  const shape = new THREE.Shape();
+  if (customSitePolygon && customSitePolygon.length >= 3) {
+    shape.moveTo(customSitePolygon[0].x, -customSitePolygon[0].z);
+    for (let i = 1; i < customSitePolygon.length; i++) shape.lineTo(customSitePolygon[i].x, -customSitePolygon[i].z);
+  } else {
+    shape.moveTo(-sw/2, sd/2); shape.lineTo(sw/2, sd/2); shape.lineTo(sw/2, -sd/2); shape.lineTo(-sw/2, -sd/2);
+  }
+
+  try {
+    const siteGeo = new THREE.ExtrudeGeometry(shape, { depth: 2, bevelEnabled: false });
+    siteMesh = new THREE.Mesh(siteGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, transparent: true, opacity: (inputs.traceToggle?.checked && traceMesh) ? 0.4 : 1 }));
+    siteMesh.rotation.x = -Math.PI / 2;
+    siteMesh.position.y = -2;
+    scene.add(siteMesh);
+  } catch (e) {
+    console.error("Site Extrusion Failed:", e);
+  }
+
+  const redLinePts = (customSitePolygon && customSitePolygon.length >= 3 ? customSitePolygon : [{x:-sw/2,z:-sd/2},{x:sw/2,z:-sd/2},{x:sw/2,z:sd/2},{x:-sw/2,z:sd/2}]).map(p => new THREE.Vector3(p.x, 0.05, p.z));
+  redLinePts.push(redLinePts[0].clone());
+  const redLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(redLinePts), new THREE.LineBasicMaterial({ color: 0xef4444 }));
+  scene.add(redLine); volumeMeshes.push(redLine);
+
+  roadMesh = new THREE.Mesh(new THREE.PlaneGeometry(drawExtent, road1W, 32, 2), new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 1, metalness: 0 }));
+  let r1_dir_x = new THREE.Vector3(Nf1.z, r1Grad, -Nf1.x).normalize();
+  let r1_dir_y = new THREE.Vector3(-Nf1.x, 0, -Nf1.z).normalize();
+  let r1_dir_z = new THREE.Vector3().crossVectors(r1_dir_x, r1_dir_y).normalize();
+
+  if (!Number.isFinite(r1_dir_z.x)) r1_dir_z = new THREE.Vector3(0, 1, 0);
+  roadMesh.rotation.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r1_dir_x, r1_dir_y, r1_dir_z));
+
+  const r1Center = Pf1.clone().add(Nf1.clone().multiplyScalar(-road1W / 2));
+  roadMesh.position.set(r1Center.x, r1HCenter, r1Center.z);
+  scene.add(roadMesh);
+
+  if (roads[1]) {
+    const r = roads[1];
+    road2Mesh = new THREE.Mesh(new THREE.PlaneGeometry(drawExtent, r.width), new THREE.MeshStandardMaterial({ color: 0xe4e4e7 }));
+    let r2_dir_x = new THREE.Vector3(r.Nf.z, r.gradient, -r.Nf.x).normalize();
+    let r2_dir_y = new THREE.Vector3(-r.Nf.x, 0, -r.Nf.z).normalize();
+    let r2_dir_z = new THREE.Vector3().crossVectors(r2_dir_x, r2_dir_y).normalize();
+    if (!Number.isFinite(r2_dir_z.x)) r2_dir_z = new THREE.Vector3(0, 1, 0);
+    road2Mesh.rotation.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r2_dir_x, r2_dir_y, r2_dir_z));
+    const center = r.actualPf.clone().add(r.Nf.clone().multiplyScalar(-r.width / 2));
+    road2Mesh.position.set(center.x, r.H_center, center.z);
+    scene.add(road2Mesh);
+  }
+
+  const limitH = Math.max(currentY * 1.5, 30);
+  for (const r of roads) {
+    const isMain = maxRoadWidth === r.width && r === mainRoad;
+    const slope = isMain ? ((isResidentialZone && r.width >= 12) ? 1.5 : rSlope) : rSlope;
+    const p132Boundary = (!isMain && maxRoadWidth > r.width && mainRoad)
+      ? mainRoad.Pf.clone().add(mainRoad.Nf.clone().multiplyScalar(rule132Distance))
+      : null;
+    const spanClip = getRoadSpanClipHalfPlanes(r, roadSlantTangentPad);
+    const normalSlantClip = p132Boundary ? [...spanClip, { P: p132Boundary, N: mainRoad.Nf.clone() }] : spanClip;
+    const roadMeshWidth = getRoadEdgeMeshWidth(r, roadSlantTangentPad);
+    if (!(p132Boundary && !isMain && maxRoadWidth > r.width && mainRoad)) {
+      const mesh = createSlantMesh(roadMeshWidth, r, r.actualPf.clone().sub(r.Nf.clone().multiplyScalar(r.slantOriginDist)), slope, limitH, normalSlantClip);
+      if (mesh) { mesh.visible = showRoadSlant; scene.add(mesh); volumeMeshes.push(mesh); }
+    }
+    if (!isMain && maxRoadWidth > r.width && mainRoad) {
+      const rSlantOriginDistMain = maxRoadEffectiveWidth - r.reqSb + Math.max(0, r.setback - r.reqSb);
+      const p132 = p132Boundary || mainRoad.Pf.clone().add(mainRoad.Nf.clone().multiplyScalar(rule132Distance));
+      const meshM = createSlantMesh(
+        roadMeshWidth,
+        r,
+        r.actualPf.clone().sub(r.Nf.clone().multiplyScalar(rSlantOriginDistMain)),
+        (isResidentialZone && maxRoadWidth >= 12) ? 1.5 : rSlope,
+        limitH,
+        [...spanClip, { P: p132, N: mainRoad.Nf.clone().negate() }]
+      );
+      if (meshM) { meshM.material.color.setHex(0x8b5cf6); meshM.material.opacity = 0.15; meshM.visible = showRoadSlant; scene.add(meshM); volumeMeshes.push(meshM); }
+    }
+
+    if (r.reqSb > 0 && r.p1 && r.p2) {
+      drawDashWithLabel(r.p1.clone().add(r.Nf.clone().multiplyScalar(r.reqSb)), r.p2.clone().add(r.Nf.clone().multiplyScalar(r.reqSb)), r.reqSb, '2項道路提供線', 'minashi', effectivePoly);
+    }
+    const extraSb = r.setback - r.reqSb;
+    if (extraSb > 0 && r.p1 && r.p2) {
+      drawDashWithLabel(r.p1.clone().add(r.Nf.clone().multiplyScalar(r.setback)), r.p2.clone().add(r.Nf.clone().multiplyScalar(r.setback)), r.setback, '建物道路後退', 'road', setbackDisplayPoly);
+    }
+  }
+
+  if (hasRule132Mitigation && mainRoad && rule132Distance > 0) {
+    const p132 = mainRoad.Pf.clone().add(mainRoad.Nf.clone().multiplyScalar(rule132Distance));
+    const t132 = new THREE.Vector3(mainRoad.Nf.z, 0, -mainRoad.Nf.x).normalize();
+    const p132a = p132.clone().add(t132.clone().multiplyScalar(drawExtent));
+    const p132b = p132.clone().sub(t132.clone().multiplyScalar(drawExtent));
+    drawDashWithLabel(p132a, p132b, rule132Distance.toFixed(1), '令132条 適用境界', 'minashi', effectivePoly);
+  }
+
+  if (zone.adjHeight !== null && zone.adjSlope !== null) {
+    const limitHAdj = Math.max(currentY * 1.5, zone.adjHeight + 20);
+    for (const adj of adjLines) {
+      const meshWidth = (adj.p1 && adj.p2) ? Math.max(0.1, Math.hypot(adj.p2.x - adj.p1.x, adj.p2.z - adj.p1.z)) : drawExtent;
+      const mesh = createAdjSlantMesh(meshWidth, adj, adj.actualPf.clone().sub(adj.Nf.clone().multiplyScalar(adj.setback)), zone.adjSlope, zone.adjHeight, limitHAdj);
+      if (mesh) { mesh.visible = showAdjSlant; scene.add(mesh); volumeMeshes.push(mesh); }
+    }
+  }
+
+  if (northLines.length > 0) {
+    const limitHNorth = Math.max(currentY * 1.5, 30);
+    for (const nl of northLines) {
+      const meshWidth = (nl.p1 && nl.p2) ? Math.max(0.1, Math.hypot(nl.p2.x - nl.p1.x, nl.p2.z - nl.p1.z)) : drawExtent;
+      const mesh = createNorthSlantMesh(meshWidth, nl, vNorth, limitHNorth);
+      if (mesh) { mesh.visible = showNorthSlant; scene.add(mesh); volumeMeshes.push(mesh); }
+    }
+  }
+
+  for (const adj of adjLines) if (adj.setback > 0 && adj.p1 && adj.p2) drawDashWithLabel(adj.p1.clone().add(adj.Nf.clone().multiplyScalar(adj.setback)), adj.p2.clone().add(adj.Nf.clone().multiplyScalar(adj.setback)), adj.setback, adj.name, 'other', setbackDisplayPoly);
+  if(siteLabelsGroup) siteLabelsGroup.visible = showSetbackLine;
+  renderOneRoomLightCheck(finalExempt, normalizeZoneType(inputs.zoneType?.value), effectivePoly);
+
+  if (inputs.toggleModuleGrid?.checked && mainRoad) {
+    const gridSize = Math.max(sw, sd) * 1.5, step = 3.5;
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.6 });
+    const angleRad = THREE.MathUtils.degToRad(-(parseFloat(inputs.gridRotation?.value) || 0));
+    const dirX = new THREE.Vector3(-mainRoad.Nf.z, 0, mainRoad.Nf.x).normalize().applyAxisAngle(new THREE.Vector3(0,1,0), angleRad);
+    const dirZ = mainRoad.Nf.clone().negate().applyAxisAngle(new THREE.Vector3(0,1,0), angleRad);
+    const origin = mainRoad.p1 ? mainRoad.p1.clone() : mainRoad.actualPf.clone();
+    const halfSize = Math.ceil(gridSize / step) * step;
+    for (let i = -halfSize; i <= halfSize; i += step) {
+      moduleGridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin.clone().add(dirX.clone().multiplyScalar(i)).add(dirZ.clone().multiplyScalar(-halfSize)), origin.clone().add(dirX.clone().multiplyScalar(i)).add(dirZ.clone().multiplyScalar(halfSize))]), gridMat));
+      moduleGridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin.clone().add(dirZ.clone().multiplyScalar(i)).add(dirX.clone().multiplyScalar(-halfSize)), origin.clone().add(dirZ.clone().multiplyScalar(i)).add(dirX.clone().multiplyScalar(halfSize))]), gridMat));
+    }
+  }
+
+  renderBuildingMeshes();
+  updateResultPanels(finalFootprintArea, tFloorArea, finalCountableArea, effectiveSiteArea, appliedBcr, appliedFar, maxHeight);
+}
+
+function updateFloorSelectUI() {
+  const panel = q('floorSelectPanelMain') || q('floorSelectPanel');
+  if(!panel) return;
+  const select = panel.querySelector('select');
+  if (!select) return;
+  const cur = select.value;
+  let html = '<option value="all">配置図(全景)</option>';
+  for(let i = 1; i <= allFloorsData.length; i++){
+    html += `<option value="${i}">${i}階 平面図</option>`;
+  }
+  select.innerHTML = html;
+  if (cur === 'all' || parseInt(cur) <= allFloorsData.length) {
+    select.value = cur;
+  } else {
+    select.value = 'all';
+  }
+  applyFloorVisibility();
+}
+
+function applyFloorVisibility() {
+  const isPlan = viewBtns.plan?.classList.contains('active');
+  const panel = q('floorSelectPanelMain') || q('floorSelectPanel');
+  const val = panel?.querySelector('select')?.value || 'all';
+
+  volumeMeshes.forEach(m => {
+    if(m.userData && m.userData.floor !== undefined) {
+      m.visible = (!isPlan || val === 'all' || m.userData.floor === parseInt(val));
+    }
+  });
+  if(orthoEdgesGroup) {
+    orthoEdgesGroup.children.forEach(e => {
+      if(e.userData && e.userData.floor !== undefined) {
+        e.visible = (!isPlan || val === 'all' || e.userData.floor === parseInt(val));
+      }
+    });
+  }
+
+  if(siteLabelsGroup) {
+    siteLabelsGroup.children.forEach(l => {
+      if(l.userData && l.userData.floor !== undefined) {
+        l.visible = (!isPlan || val === 'all' || l.userData.floor === parseInt(val));
+      }
+    });
+  }
+
+  const areaDisplay = panel?.querySelector('div');
+  if (isPlan && areaDisplay) {
+    areaDisplay.classList.remove('hidden');
+    areaDisplay.classList.add('block');
+    if (val === 'all') {
+      areaDisplay.innerHTML = `建築面積: <span>${results.buildingArea?.textContent || '0.00'}</span> m²`;
+    } else {
+      const floorNum = parseInt(val);
+      const floorData = allFloorsData.find(d => d.floor === floorNum);
+      if (floorData) {
+        areaDisplay.innerHTML = `床面積: <span>${floorData.area.toFixed(2)}</span> m²`;
+      }
+    }
+  } else if (areaDisplay) {
+    areaDisplay.classList.add('hidden');
+    areaDisplay.classList.remove('block');
+  }
+}
+
+function saveCurrentData() {
+  const dataToSave = {};
+  for (const key in inputs) {
+    if (inputs[key]?.type === 'checkbox') dataToSave[key] = inputs[key].checked;
+    else if (inputs[key] && inputs[key].type !== 'file') dataToSave[key] = inputs[key].value;
+  }
+
+  const dynInputs = q('adjSetbackInputs')?.querySelectorAll('input');
+  if (dynInputs) {
+    dynInputs.forEach(el => {
+      if (el.id && !el.disabled) dataToSave[el.id] = el.value;
+    });
+  }
+
+  dataToSave._customPolygon = customSitePolygon;
+  dataToSave._customSiteRoad2Index = customSiteRoad2Index;
+
+  const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  const record = { id: Date.now().toString(), name: `${inputs.siteAddress?.value || '名称未設定'} (${new Date().toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })})`, data: dataToSave };
+  history.unshift(record);
+  if (history.length > 20) history.pop();
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  updateHistorySelect();
+  if(q('historySelect')) q('historySelect').value = record.id;
+  showToast('現在の入力状態と多角形形状を保存しました');
+}
+
+function updateHistorySelect() {
+  const select = q('historySelect');
+  if(!select) return;
+  select.innerHTML = '<option value="">履歴から復元...</option>';
+  JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').forEach(record => {
+    const opt = document.createElement('option');
+    opt.value = record.id;
+    opt.textContent = record.name;
+    select.appendChild(opt);
+  });
+}
+
+function loadSelectedData() {
+  const selected = q('historySelect')?.value;
+  if (!selected) return showToast('復元する履歴を選択してください', true);
+  const record = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').find(r => r.id === selected);
+  if (!record) return;
+
+  if (record.data._customPolygon !== undefined) customSitePolygon = record.data._customPolygon;
+  if (record.data._customSiteRoad2Index !== undefined) customSiteRoad2Index = record.data._customSiteRoad2Index;
+
+  updateAdjSetbackUI();
+
+  for (const key in record.data) {
+    if (key === '_customPolygon' || key === '_customSiteRoad2Index') continue;
+    const el = inputs[key] || q(key);
+    if (el && el.type !== 'file') {
+       if (el.type === 'checkbox') el.checked = record.data[key];
+       else el.value = record.data[key];
+    }
+  }
+
+  if(q('road2Settings') && inputs.hasRoad2) q('road2Settings').classList.toggle('hidden', !inputs.hasRoad2.checked);
+  if(q('traceSettings') && inputs.traceToggle) q('traceSettings').classList.toggle('hidden', !inputs.traceToggle.checked);
+  if (traceMesh && inputs.traceToggle) traceMesh.visible = inputs.traceToggle.checked;
+  if (inputs.garageArea && inputs.autoGarageToggle) {
+    inputs.garageArea.readOnly = inputs.autoGarageToggle.checked;
+    inputs.garageArea.style.opacity = inputs.autoGarageToggle.checked ? '0.6' : '1';
+  }
+  if(inputs.siteAddress) updateDynamicMapLinks(inputs.siteAddress.value);
+  if(q('northNeedle') && inputs.northAngle) q('northNeedle').style.transform = `rotate(${inputs.northAngle.value}deg)`;
+  updateTraceMesh();
+  applyZoneAutoInput({ keepCurrentIfNoDesignation: true, suppressUpdateScene: true });
+  updateScene();
+  showToast('データを復元しました（下絵画像は再選択してください）');
+}
+
+function deleteSelectedData() {
+  const selected = q('historySelect')?.value;
+  if (!selected) return showToast('削除する履歴を選択してください', true);
+  if (!confirm('選択した履歴を削除しますか？')) return;
+  const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]').filter(r => r.id !== selected);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  updateHistorySelect();
+  showToast('履歴を削除しました');
+}
+
+const CENTURY21_TARGET_LABEL = '株式会社センチュリー21・ジャパン本部（加盟店支援 × IT / 21Cloud責任者）';
+
+function hasRuntimeGeminiApiKey() {
+  const key = (typeof apiKey === 'string' ? apiKey.trim() : '');
+  return key.length > 20 && !/^(YOUR_|PASTE_|AIzaSyXXXX|dummy|test)/i.test(key);
+}
+
+function cleanJsonString(str='') {
+  let cleaned = String(str).replace(/```json/gi, '').replace(/```/g, '').trim();
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) return cleaned.substring(firstBrace, lastBrace + 1);
+  return cleaned;
+}
+
+function safeNumberText(el, digits=2) {
+  const n = parseFloat(el?.textContent || '0');
+  return Number.isFinite(n) ? n.toFixed(digits) : (0).toFixed(digits);
+}
+
+function getPlanningSnapshot() {
+  const zoneSelect = inputs.zoneType;
+  const zoneText = zoneSelect?.options?.[zoneSelect.selectedIndex]?.text || '未設定';
+  return {
+    target: CENTURY21_TARGET_LABEL,
+    address: inputs.siteAddress?.value?.trim() || '未入力',
+    zoneText,
+    siteArea: parseFloat(inputs.inputSiteArea?.value || '0') || 0,
+    width: parseFloat(inputs.siteWidth?.value || '0') || 0,
+    depth: parseFloat(inputs.siteDepth?.value || '0') || 0,
+    roadWidth: parseFloat(inputs.roadWidth?.value || '0') || 0,
+    bcr: parseFloat(results.resultBCR?.textContent || '0') || 0,
+    far: parseFloat(results.resultFAR?.textContent || '0') || 0,
+    appliedBcr: q('actualBcrValLabel')?.textContent || '0',
+    appliedFar: q('actualFarVal')?.textContent || '0',
+    buildingArea: parseFloat(results.buildingArea?.textContent || '0') || 0,
+    grossArea: parseFloat(results.grossArea?.textContent || '0') || 0,
+    floors: parseInt(results.resultFloorCount?.textContent || '0', 10) || 0,
+    maxWidth: safeNumberText(q('bldgMaxWidth')),
+    maxDepth: safeNumberText(q('bldgMaxDepth')),
+    maxHeight: safeNumberText(q('bldgMaxHeight')),
+    setbackArea: safeNumberText(q('setbackAreaResult'))
+  };
+}
+
+function buildCentury21CtaHtml() {
+  return `
+    <div class="mt-10 p-5 bg-amber-50 border border-amber-200 rounded-2xl text-zinc-800">
+      <h3 class="text-lg font-black text-amber-700 mb-2">営業での見せ方</h3>
+      <p class="text-sm leading-relaxed">この画面は「正確な設計図」ではなく、土地仕入れ・売却査定・建築提案の初動で、営業担当がその場で建築可能ボリュームを共有するための提案支援ツールとして説明してください。</p>
+    </div>`;
+}
+
+function buildLocalCentury21ReportHtml() {
+  const s = getPlanningSnapshot();
+  const tsubo = s.grossArea > 0 ? (s.grossArea / 3.305785).toFixed(1) : '0.0';
+  return `
+    <div class="space-y-5">
+      <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-2xl text-sm text-yellow-800 font-bold">
+        Gemini APIキーが未設定のため、ローカル簡易レポートを表示しています。APIキーを設定するとAI文章生成に切り替わります。
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-2xl p-5 shadow-sm">
+        <p class="text-xs font-black tracking-widest text-amber-600 mb-2">CENTURY21 営業支援向け</p>
+        <h2 class="text-2xl font-black text-zinc-900 mb-3">初動提案用 建築ボリューム概要</h2>
+        <p class="text-sm text-zinc-600 leading-relaxed">提案先：${escapeHtml(s.target)}<br>計画地：${escapeHtml(s.address)} / ${escapeHtml(s.zoneText)}</p>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3"><div class="text-[11px] font-bold text-blue-600">敷地面積</div><div class="font-black text-lg">${s.siteArea.toFixed(1)}㎡</div></div>
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3"><div class="text-[11px] font-bold text-blue-600">建築面積</div><div class="font-black text-lg">${s.buildingArea.toFixed(1)}㎡</div></div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3"><div class="text-[11px] font-bold text-indigo-600">延床面積</div><div class="font-black text-lg">${s.grossArea.toFixed(1)}㎡</div></div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3"><div class="text-[11px] font-bold text-indigo-600">概算坪数</div><div class="font-black text-lg">${tsubo}坪</div></div>
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-2xl p-5 leading-relaxed text-sm">
+        <h3 class="text-lg font-black text-zinc-900 mb-3">営業トークの要点</h3>
+        <ul class="list-disc pl-5 space-y-2">
+          <li><strong>売主向け：</strong>土地の潜在ボリュームを即時に見せ、査定根拠と売却提案の説得力を高められます。</li>
+          <li><strong>買主・投資家向け：</strong>建築面積、延床面積、階数の目安をその場で共有し、検討初動の離脱を減らせます。</li>
+          <li><strong>加盟店展開：</strong>営業担当ごとの経験差を補い、土地・法規・ボリュームの初期提案を標準化できます。</li>
+        </ul>
+      </div>
+      <div class="bg-zinc-900 text-white rounded-2xl p-5 leading-relaxed text-sm">
+        <h3 class="text-lg font-black mb-3">本部提案時の位置づけ</h3>
+        <p>「ボリュームチェックソフト」単体ではなく、21Cloud周辺の提案強化機能、または加盟店向け推奨ツールとして、加盟店全体の成約率・提案力向上に寄与する仕組みとして提案するのが適しています。</p>
+      </div>
+      ${buildCentury21CtaHtml()}
+    </div>`;
+}
+
+function buildLocalChatReply(text='') {
+  const s = getPlanningSnapshot();
+  const t = String(text);
+  if (/日影|高度|防火|法規|リスク|斜線/.test(t)) {
+    return `APIキー未設定のためローカル回答です。\n\nこのツール上では、用途地域・道路幅員・建ぺい率・容積率・道路斜線・隣地斜線・北側斜線を初動確認できます。営業現場では「正確な設計可否」ではなく「次に設計士や行政確認へ進めるための一次判断」として使うのが安全です。\n\n現在の計画は、用途地域: ${s.zoneText}、敷地面積: ${s.siteArea.toFixed(1)}㎡、延床面積: ${s.grossArea.toFixed(1)}㎡、階数: ${s.floors}階です。追加確認として、防火・準防火地域、高度地区、日影規制、地区計画、条例、接道種別、道路中心線、天空率利用可否を行政資料で確認してください。`;
+  }
+  if (/使い方|操作|入力|手順/.test(t)) {
+    return `APIキー未設定のためローカル回答です。\n\n営業現場での基本手順は、1) 住所入力、2) 衛星地図または図面画像で敷地形状を入力、3) 道路幅員と第2道路を設定、4) 用途地域・建ぺい率・容積率を設定、5) 3D表示と算定結果を見ながらお客様に初動提案、です。\n\nポイントは、細かい設計精度よりも「その場で土地の可能性を見せるスピード」です。`;
+  }
+  return `APIキー未設定のためローカル回答です。\n\n現在のボリュームは、敷地面積 ${s.siteArea.toFixed(1)}㎡、建築面積 ${s.buildingArea.toFixed(1)}㎡、延床面積 ${s.grossArea.toFixed(1)}㎡、実現階数 ${s.floors}階です。営業では「この土地でどの程度の建物が入りそうか」を即時に共有し、売却査定・土地仕入れ・建築提案の次アクションにつなげる説明が有効です。`;
+}
+
+function buildLocalCostPredictionJson() {
+  const s = getPlanningSnapshot();
+  const tsubo = s.grossArea > 0 ? s.grossArea / 3.305785 : 0;
+  if (!tsubo) {
+    return {
+      construction_cost_per_tsubo: '算定後に表示',
+      total_construction_cost: '算定後に表示',
+      expected_rent_per_tsubo: '用途・立地確認後',
+      target_audience: 'まず敷地形状と法規条件を入力してください。',
+      advice: '3Dボリュームが表示された後に再度実行すると、営業用の概算目安として使いやすくなります。'
+    };
+  }
+  const lowMan = Math.round(tsubo * 95);
+  const highMan = Math.round(tsubo * 130);
+  const totalText = highMan >= 10000 ? `約${(lowMan/10000).toFixed(1)}億〜${(highMan/10000).toFixed(1)}億円` : `約${lowMan.toLocaleString('ja-JP')}万〜${highMan.toLocaleString('ja-JP')}万円`;
+  return {
+    construction_cost_per_tsubo: '95万〜130万円',
+    total_construction_cost: totalText,
+    expected_rent_per_tsubo: '周辺相場確認が必要',
+    target_audience: '売主、土地購入検討者、投資家、建築提案を受ける法人・個人。特に初回商談で建物規模を早く把握したい顧客向け。',
+    advice: '営業初動では概算レンジとして提示し、正式提案前に設計士・施工会社・行政調査で精査してください。'
+  };
+}
+
+function renderCostPredictionHtml(json) {
+  return `
+    <div class="relative">
+      <div class="flex items-center justify-between gap-2 mb-2 pb-1 border-b border-blue-200">
+        <div class="font-black text-blue-700">AI概算コスト＆収益予測</div>
+        <button id="closeCostBtn" class="rounded-full bg-white border border-blue-200 text-blue-700 hover:bg-blue-100 px-2 py-0.5 text-[10px] font-black transition-colors" title="閉じる">閉じる ×</button>
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex justify-between border-b border-blue-200 pb-1"><span class="font-bold text-blue-700">坪建築費目安</span><span class="font-black text-zinc-800">${escapeHtml(json.construction_cost_per_tsubo)}</span></div>
+        <div class="flex justify-between border-b border-blue-200 pb-1"><span class="font-bold text-blue-700">総建築費目安</span><span class="font-black text-zinc-800">${escapeHtml(json.total_construction_cost)}</span></div>
+        <div class="flex justify-between border-b border-blue-200 pb-1"><span class="font-bold text-blue-700">想定坪賃料</span><span class="font-black text-zinc-800">${escapeHtml(json.expected_rent_per_tsubo)}</span></div>
+        <div class="pt-1"><span class="font-bold text-blue-700 block mb-0.5">ターゲット層</span><p class="text-zinc-600">${escapeHtml(json.target_audience)}</p></div>
+        <div class="pt-1 bg-blue-100/50 p-2 rounded-lg mt-2"><span class="font-bold text-blue-800 block mb-0.5">プロのアドバイス</span><p class="text-blue-900">${escapeHtml(json.advice)}</p></div>
+      </div>
+    </div>`;
+}
+
+function renderCostErrorHtml(message) {
+  return `
+    <div class="relative">
+      <div class="flex items-center justify-between gap-2 mb-2 pb-1 border-b border-red-100">
+        <div class="font-black text-red-600">AI概算コスト＆収益予測</div>
+        <button id="closeCostBtn" class="rounded-full bg-white border border-red-200 text-red-600 hover:bg-red-100 px-2 py-0.5 text-[10px] font-black transition-colors" title="閉じる">閉じる ×</button>
+      </div>
+      <span class="text-red-500 font-bold">エラー: ${escapeHtml(message || '不明なエラー')}</span>
+    </div>`;
+}
+
+function bindCloseCostButton(resultBox) {
+  q('closeCostBtn')?.addEventListener('click', () => resultBox?.classList.add('hidden'));
+}
+
+function bindCloseLightCheckButton() {
+  q('closeLightCheckBtn')?.addEventListener('click', () => {
+    lightCheckActive = false;
+    q('oneRoomLightResult')?.classList.add('hidden');
+    requestSceneUpdate();
+  });
+}
+
+async function fetchGeminiAPI(promptText, generationConfig = null) {
+  if (!hasRuntimeGeminiApiKey()) throw new Error('Gemini APIキーが未設定です');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const payload = { contents: [{ role: 'user', parts: [{ text: promptText }] }] };
+  if (generationConfig) payload.generationConfig = generationConfig;
+
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  };
+  const delays = [800, 1600, 3200];
+  for (let i = 0; i <= delays.length; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      return await response.json();
+    } catch (error) {
+      if (i === delays.length || String(error.message || '').includes('APIキー')) throw error;
+      await new Promise(resolve => setTimeout(resolve, delays[i]));
+    }
+  }
+}
+async function handleAiGeneration() {
+  const modal = q('aiModal'), loading = q('aiLoading'), content = q('aiResultContent');
+  if (!modal || !loading || !content) return;
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+  loading.classList.remove('hidden');
+  content.classList.add('hidden');
+  content.innerHTML = '';
+  const s = getPlanningSnapshot();
+  const prompt = `提案先:${CENTURY21_TARGET_LABEL}
+計画地住所:${s.address}
+用途地域:${s.zoneText}
+敷地面積:${s.siteArea.toFixed(1)}m2
+指定建ぺい率:${inputs.bcr?.value || '未設定'}%, 適用建ぺい率:${s.appliedBcr}%
+指定容積率:${inputs.far?.value || '未設定'}%, 適用容積率:${s.appliedFar}%
+建築面積:${s.buildingArea.toFixed(1)}m2, 総床面積:${s.grossArea.toFixed(1)}m2, 階数:${s.floors}階
+目的: 不動産営業マンが土地仕入れ・売却査定・建築提案の初動で使う営業支援ツールとして、センチュリー21加盟店全体に横展開できる価値を説明する。`;
+  try {
+    if (!hasRuntimeGeminiApiKey()) {
+      content.innerHTML = buildLocalCentury21ReportHtml();
+    } else {
+      const data = await fetchGeminiAPI(prompt);
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '分析に失敗しました。';
+      content.innerHTML = renderReportMarkdown(text) + buildCentury21CtaHtml();
+    }
+  } catch (e) {
+    content.innerHTML = `<div class="text-red-600 font-bold mb-4">AI通信エラー: ${escapeHtml(e.message || '不明なエラー')}</div>` + buildLocalCentury21ReportHtml();
+  } finally {
+    loading.classList.add('hidden');
+    content.classList.remove('hidden');
+  }
+}
+
+function appendMessage(sender, content, id='', allowHtml=false) {
+  const wrap = document.createElement('div');
+  wrap.className = `flex flex-col items-${sender === 'user' ? 'end' : 'start'} max-w-[85%] ${sender === 'user' ? 'self-end' : ''}`;
+  if (sender === 'ai') {
+    const label = document.createElement('span');
+    label.className = 'text-[10px] text-zinc-500 font-bold mb-1 ml-1';
+    label.textContent = 'AIアシスタント';
+    wrap.appendChild(label);
+  }
+  const bubble = document.createElement('div');
+  if (id) bubble.id = id;
+  bubble.className = sender === 'user'
+    ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-sm p-3 leading-relaxed break-words w-full'
+    : 'bg-white border border-zinc-200 text-zinc-700 rounded-2xl rounded-tl-sm shadow-sm p-3 leading-relaxed break-words w-full';
+  if (allowHtml) bubble.innerHTML = content; else bubble.textContent = content;
+  wrap.appendChild(bubble);
+  q('chatMessages').appendChild(wrap);
+  q('chatMessages').scrollTop = q('chatMessages').scrollHeight;
+}
+async function sendChatMessage(customText) {
+  const text = typeof customText === 'string' ? customText : q('chatInput').value.trim();
+  if (!text) return;
+  appendMessage('user', text);
+  if (typeof customText !== 'string') q('chatInput').value = '';
+  q('chatInput').disabled = true;
+  q('sendChatBtn').disabled = true;
+  const loadingId = 'loading-' + Date.now();
+  appendMessage('ai', '<div class="flex items-center gap-1.5 h-4"><div class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay:0.1s"></div><div class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay:0.2s"></div></div>', loadingId, true);
+  const context = `現在の入力状態:\n敷地面積: ${inputs.inputSiteArea.value}m2\n前面道路: ${inputs.roadWidth.value}m\n用途地域: ${inputs.zoneType.options[inputs.zoneType.selectedIndex].text}\n指定建ぺい率: ${inputs.bcr.value}%\n指定容積率: ${inputs.far.value}%\n現在の算定結果: 建築面積 ${results.buildingArea.textContent}m2, 総延床面積 ${results.grossArea.textContent}m2, 階数 ${results.resultFloorCount.textContent}階`;
+  const systemPrompt = `あなたは「Volume TECH（簡易建築ボリューム検討アプリ）」の優秀なAIアシスタントです。アプリの使い方、建築基準法（斜線制限、建ぺい率、容積率など）、不動産企画に関する質問に専門的かつ簡潔に答えてください。回答はHTMLは使わず、プレーンテキストまたはマークダウンで返してください。`;
+  const prompt = `${systemPrompt}\n\n${context}\n\nユーザーの質問: ${text}`;
+  try {
+    if (!hasRuntimeGeminiApiKey()) {
+      const node = q(loadingId);
+      if (node) node.innerHTML = renderChatText(buildLocalChatReply(text));
+      return;
+    }
+    const data = await fetchGeminiAPI(prompt);
+    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'すみません、エラーが発生しました。';
+    const node = q(loadingId);
+    if (node) node.innerHTML = renderChatText(aiText);
+  } catch (e) {
+    const node = q(loadingId);
+    if (node) node.textContent = `通信エラー: ${e.message || '不明なエラー'}`;
+  } finally {
+    q('chatInput').disabled = false;
+    q('sendChatBtn').disabled = false;
+    q('chatInput').focus();
+    q('chatMessages').scrollTop = q('chatMessages').scrollHeight;
+  }
+}
+
+function setView(type) {
+  Object.values(viewBtns).forEach(b => b?.classList.remove('active'));
+  ['canvas-container','map-view-wrapper','image-view-wrapper','resultsPanel','northArrowPanel','floorSelectPanelMain','floorSelectPanel'].forEach(id => {
+    const el = q(id);
+    if(el) {
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    }
+  });
+
+  if (type === 'map') {
+    q('map-view-wrapper')?.classList.remove('hidden');
+    setTimeout(() => initLeafletMap(inputs.siteAddress?.value), 100);
+    return;
+  }
+  if (type === 'imageMap') {
+    q('image-view-wrapper')?.classList.remove('hidden');
+    setTimeout(initImageMeasureMap, 100);
+    return;
+  }
+  q('canvas-container')?.classList.remove('hidden');
+  q('resultsPanel')?.classList.remove('hidden');
+  q('northArrowPanel')?.classList.remove('hidden');
+
+  if (type === 'plan') {
+    viewBtns.plan?.classList.add('active');
+    const panel = q('floorSelectPanelMain') || q('floorSelectPanel');
+    if (panel) {
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+    }
+    if (cameraOrtho && controls) {
+      camera = cameraOrtho;
+      camera.position.set(0, 150, 0);
+      camera.up.set(0, 0, -1);
+      camera.lookAt(0,0,0);
+      controls.target.set(0, 0, 0);
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = 0;
+      controls.minAzimuthAngle = 0;
+      controls.maxAzimuthAngle = 0;
+      controls.enableRotate = false;
+      controls.update();
+    }
+    updateFloorSelectUI();
+  } else {
+    viewBtns.persp?.classList.add('active');
+    if (cameraPersp && controls) {
+      camera = cameraPersp;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      controls.enableRotate = true;
+    }
+    applyFloorVisibility();
+  }
+  if(controls && camera) {
+    controls.object = camera;
+    controls.update();
+  }
+  updateScene();
+}
+let sceneUpdateQueued = false;
+function requestSceneUpdate() {
+  if (sceneUpdateQueued) return;
+  sceneUpdateQueued = true;
+  requestAnimationFrame(() => {
+    sceneUpdateQueued = false;
+    updateScene();
+  });
+}
+
+function handleNorthDial(e) {
+  const dial = q('northDial');
+  if(!dial) return;
+  const rect = dial.getBoundingClientRect(), cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX, clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  let angle = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI) + 90;
+  if (angle < 0) angle += 360;
+  if(inputs.northAngle) {
+    inputs.northAngle.value = Math.round(angle);
+    q('northNeedle').style.transform = `rotate(${inputs.northAngle.value}deg)`;
+    requestSceneUpdate();
+  }
+}
+
+
+const isIPadLike = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function getCanvasSize() {
+  const el = q('canvas-container');
+  const rect = el ? el.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
+  const w = Math.max(1, Math.floor(rect.width || el?.clientWidth || window.innerWidth));
+  const h = Math.max(1, Math.floor(rect.height || el?.clientHeight || window.innerHeight * 0.7));
+  return { w, h };
+}
+function resizeCanvasRenderers() {
+  if(!cameraPersp || !cameraOrtho || !renderer || !labelRenderer) return;
+  const { w, h } = getCanvasSize();
+  const aspect = w / h;
+  cameraPersp.aspect = aspect; cameraPersp.updateProjectionMatrix();
+  const orthoSize = 40;
+  cameraOrtho.left = -orthoSize * aspect;
+  cameraOrtho.right = orthoSize * aspect;
+  cameraOrtho.top = orthoSize;
+  cameraOrtho.bottom = -orthoSize;
+  cameraOrtho.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+  labelRenderer.setSize(w, h);
+}
+
+function init() {
+  const inputIds = ['roadWidth','hasRoad2','road2Width','road2Pos','siteWidth','siteDepth','inputSiteArea','northAngle','siteAddress','zoneType','traceToggle','traceScale','traceRot','traceX','traceZ','traceOpacity','setbackFront','setbackRoad2','bcr','cornerBcrToggle','far','floorCount','bldgAlign','garageArea','autoGarageToggle','autoFarToggle','toggleRoadSlant','toggleAdjSlant','toggleNorthSlant','toggleSetbackLine','toggleModuleGrid','gridRotation','applyNorthSlant','lightEdgeSelect'];
+  inputIds.forEach(id => { const el = q(id); if (el) inputs[id] = el; });
+  const resultIds = ['buildingArea','grossArea','resultBCR','resultFAR','resultFloorCount','bldgMaxWidth','bldgMaxDepth','bldgMaxHeight', 'setbackAreaResult'];
+  resultIds.forEach(id => results[id] = q(id));
+
+  viewBtns = { persp:q('perspViewBtn'), plan:q('planViewBtn') };
+
+  const containerEl = q('canvas-container');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf4f4f5);
+  const initialCanvasSize = getCanvasSize();
+  cameraPersp = new THREE.PerspectiveCamera(50, initialCanvasSize.w / initialCanvasSize.h, 0.1, 1000);
+  cameraPersp.position.set(0, 50, 60);
+
+  const aspect = initialCanvasSize.w / initialCanvasSize.h;
+  const orthoSize = 40;
+  cameraOrtho = new THREE.OrthographicCamera(-orthoSize * aspect, orthoSize * aspect, orthoSize, -orthoSize, 0.1, 1000);
+  camera = cameraPersp;
+
+  const ipadMode = isIPadLike();
+  renderer = new THREE.WebGLRenderer({ antialias: !ipadMode, alpha:true, powerPreference: ipadMode ? 'default' : 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, ipadMode ? 1 : 1.5));
+  renderer.setSize(initialCanvasSize.w, initialCanvasSize.h, false);
+  renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); showToast('3D表示を再読み込みしています', true); }, false);
+  renderer.domElement.addEventListener('webglcontextrestored', () => { resizeCanvasRenderers(); updateScene(); }, false);
+  containerEl.appendChild(renderer.domElement);
+  labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(initialCanvasSize.w, initialCanvasSize.h);
+  labelRenderer.domElement.style.position = 'absolute';
+  labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.pointerEvents = 'none';
+  containerEl.appendChild(labelRenderer.domElement);
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(20, 50, 20);
+  scene.add(ambientLight, directionalLight);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  orthoEdgesGroup = new THREE.Group();
+  siteLabelsGroup = new THREE.Group();
+  moduleGridGroup = new THREE.Group();
+  scene.add(orthoEdgesGroup, siteLabelsGroup, moduleGridGroup);
+
+  q('saveDataBtn')?.addEventListener('click', saveCurrentData);
+  q('loadDataBtn')?.addEventListener('click', loadSelectedData);
+  q('deleteDataBtn')?.addEventListener('click', deleteSelectedData);
+  updateHistorySelect();
+
+  q('openMapMeasureBtn')?.addEventListener('click', () => setView('map'));
+  q('clearMapBtn')?.addEventListener('click', () => clearMeasure('map'));
+  q('applyMapBtn')?.addEventListener('click', () => applyMeasureToSite('map'));
+  q('adjustAreaBtn')?.addEventListener('click', () => handleAdjustArea('map'));
+  q('openImageMeasureBtn')?.addEventListener('click', () => setView('imageMap'));
+  q('clearImageMapBtn')?.addEventListener('click', () => clearMeasure('imageMap'));
+  q('applyImageMapBtn')?.addEventListener('click', () => applyMeasureToSite('imageMap'));
+  q('adjustImageAreaBtn')?.addEventListener('click', () => handleAdjustArea('imageMap'));
+
+  q('measureMapRoad1Btn')?.addEventListener('click', () => {
+    mapMeasuringMode = 'road1';
+    tempMapRoadPoints = [];
+    tempMapRoadLayer?.clearLayers();
+    q('measureMapRoadHint')?.classList.remove('hidden');
+    q('measureMapRoad1Btn')?.classList.add('bg-blue-100', 'border-blue-500');
+    q('measureMapRoad2Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  });
+
+  q('measureMapRoad2Btn')?.addEventListener('click', () => {
+    mapMeasuringMode = 'road2';
+    tempMapRoadPoints = [];
+    tempMapRoadLayer?.clearLayers();
+    q('measureMapRoadHint')?.classList.remove('hidden');
+    q('measureMapRoad2Btn')?.classList.add('bg-blue-100', 'border-blue-500');
+    q('measureMapRoad1Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  });
+
+  q('measureRoad1Btn')?.addEventListener('click', () => {
+    if (!isImageScaleAdjusted) showToast('※面積補正を行ってから計測すると正確です');
+    imageMeasuringMode = 'road1';
+    tempRoadPoints = [];
+    tempRoadLayer?.clearLayers();
+    q('measureRoadHint')?.classList.remove('hidden');
+    q('measureRoad1Btn')?.classList.add('bg-blue-100', 'border-blue-500');
+    q('measureRoad2Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  });
+
+  q('measureRoad2Btn')?.addEventListener('click', () => {
+    if (!isImageScaleAdjusted) showToast('※面積補正を行ってから計測すると正確です');
+    imageMeasuringMode = 'road2';
+    tempRoadPoints = [];
+    tempRoadLayer?.clearLayers();
+    q('measureRoadHint')?.classList.remove('hidden');
+    q('measureRoad2Btn')?.classList.add('bg-blue-100', 'border-blue-500');
+    q('measureRoad1Btn')?.classList.remove('bg-blue-100', 'border-blue-500');
+  });
+
+  q('adjSetbackInputs')?.addEventListener('input', (e) => {
+    if (e.target.tagName === 'INPUT') requestSceneUpdate();
+  });
+
+  q('runLightCheckBtn')?.addEventListener('click', () => {
+    lightCheckActive = true;
+    requestSceneUpdate();
+  });
+  q('lightEdgeSelect')?.addEventListener('change', () => {
+    if (lightCheckActive) requestSceneUpdate();
+  });
+
+  q('hideResultsPanelBtn')?.addEventListener('click', () => {
+    q('resultsPanel')?.classList.add('hidden');
+    q('showResultsPanelBtn')?.classList.remove('hidden');
+  });
+  q('showResultsPanelBtn')?.addEventListener('click', () => {
+    q('resultsPanel')?.classList.remove('hidden');
+    q('showResultsPanelBtn')?.classList.add('hidden');
+  });
+
+  Object.values(inputs).forEach(input => {
+    if (input?.addEventListener && input.type !== 'checkbox' && input.type !== 'file') {
+      input.addEventListener('input', () => {
+        if (input.id === 'siteWidth' || input.id === 'siteDepth') {
+          if (customSitePolygon !== null) {
+            customSitePolygon = null;
+            customSiteRoad2Index = -1;
+            updateAdjSetbackUI();
+          }
+          const w = parseFloat(inputs.siteWidth.value) || 0;
+          const d = parseFloat(inputs.siteDepth.value) || 0;
+          inputs.inputSiteArea.value = (w * d).toFixed(1);
+        }
+
+        if (input.id === 'roadWidth') {
+          const w = parseFloat(input.value) || 0;
+          if (w > 0 && w < 4) {
+            const req = Math.max(0, 2 - (w / 2));
+            const cur = parseFloat(inputs.setbackFront.value) || 0;
+            if (cur < req) inputs.setbackFront.value = req.toFixed(2);
+            q('road2koHint1')?.classList.remove('hidden');
+          } else {
+            q('road2koHint1')?.classList.add('hidden');
+          }
+        }
+        if (input.id === 'road2Width') {
+          const w = parseFloat(input.value) || 0;
+          if (w > 0 && w < 4) {
+            const req = Math.max(0, 2 - (w / 2));
+            const cur = parseFloat(inputs.setbackRoad2.value) || 0;
+            if (cur < req) inputs.setbackRoad2.value = req.toFixed(2);
+            q('road2koHint2')?.classList.remove('hidden');
+          } else {
+            q('road2koHint2')?.classList.add('hidden');
+          }
+        }
+
+        if (input.id === 'traceOpacity') {
+            const valEl = q('traceOpacityVal');
+            if (valEl) valEl.textContent = Math.round(inputs.traceOpacity.value * 100) + '%';
+        }
+        if (input.id === 'bcr') { if (input.value > 100) input.value = 100; if (input.value < 0) input.value = 0; }
+
+        if (input.id === 'floorCount') {
+          const floors = parseInt(input.value, 10) || 1;
+          const targetSb = floors >= 3 ? 1.0 : 0.5;
+          const oldSb = floors >= 3 ? 0.5 : 1.0;
+
+          if (customSitePolygon && customSitePolygon.length >= 3) {
+            for (let i = 1; i < customSitePolygon.length; i++) {
+              if (customSiteRoad2Index !== i) {
+                const el = q(`setbackPoly${i}`);
+                if (el && parseFloat(el.value) === oldSb) el.value = targetSb;
+              }
+            }
+          } else {
+            ['setbackBack', 'setbackLeft', 'setbackRight'].forEach(id => {
+              const el = q(id);
+              if (el && parseFloat(el.value) === oldSb) el.value = targetSb;
+            });
+          }
+        }
+
+        if (input.id === 'zoneType') applyZoneAutoInput({ keepCurrentIfNoDesignation: true });
+        else { updateTraceMesh(); requestSceneUpdate(); }
+      });
+    }
+  });
+
+  ['hasRoad2','traceToggle','autoGarageToggle','autoFarToggle','cornerBcrToggle','toggleRoadSlant','toggleAdjSlant','toggleNorthSlant','toggleSetbackLine','toggleModuleGrid','bldgAlign','applyNorthSlant'].forEach(id => {
+    inputs[id]?.addEventListener('change', () => {
+      if (id === 'hasRoad2') q('road2Settings')?.classList.toggle('hidden', !inputs.hasRoad2.checked);
+      if (id === 'traceToggle') {
+        q('traceSettings')?.classList.toggle('hidden', !inputs.traceToggle.checked);
+        if (traceMesh) traceMesh.visible = inputs.traceToggle.checked;
+      }
+      if (id === 'autoGarageToggle') {
+        inputs.garageArea.readOnly = inputs.autoGarageToggle.checked;
+        inputs.garageArea.style.opacity = inputs.autoGarageToggle.checked ? '0.6' : '1';
+      }
+      requestSceneUpdate();
+    });
+  });
+
+  q('traceImageUpload')?.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        imageMapPoints = [];
+        imageMapMarkers = [];
+        imageMapStats = { area: 0, width: 0, depth: 0, normalizedPolygon: null };
+        imageScaleFactor = 1;
+        isImageScaleAdjusted = false;
+        customSiteRoad2Index = -1;
+        if(q('imageMapRoad2Select')) q('imageMapRoad2Select').value = '-1';
+        if(q('imageScaleAlert')) {
+            q('imageScaleAlert').textContent = '(面積補正必須)';
+            q('imageScaleAlert').classList.remove('text-green-500');
+            q('imageScaleAlert').classList.add('text-red-500');
+        }
+
+        traceTexture?.dispose();
+        traceTexture = new THREE.Texture(img);
+        traceTexture.generateMipmaps = true;
+        traceTexture.minFilter = THREE.LinearMipmapLinearFilter;
+        traceTexture.needsUpdate = true;
+        uploadedImageUrl = ev.target.result;
+        uploadedImageWidth = img.width;
+        uploadedImageHeight = img.height;
+
+        q('openImageMeasureBtn')?.classList.remove('hidden');
+        q('imageMeasureViewBtn')?.classList.remove('hidden');
+
+        if (!traceMesh) {
+          traceMesh = new THREE.Mesh(new THREE.PlaneGeometry(img.width, img.height), new THREE.MeshBasicMaterial({ map: traceTexture, transparent: true, opacity: parseFloat(inputs.traceOpacity?.value || 0.5), depthWrite: false }));
+          traceMesh.rotation.x = -Math.PI / 2;
+          traceMesh.position.y = -0.05;
+          scene.add(traceMesh);
+        } else {
+          traceMesh.material.map = traceTexture;
+          traceMesh.material.needsUpdate = true;
+          traceMesh.geometry.dispose();
+          traceMesh.geometry = new THREE.PlaneGeometry(img.width, img.height);
+        }
+        updateTraceMesh();
+        if(inputs.traceToggle) traceMesh.visible = !!inputs.traceToggle.checked;
+        setView('imageMap');
+        showToast('下絵を読み込み、画像計測に切り替えました');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  q('openMapBtn')?.addEventListener('click', () => inputs.siteAddress.value ? window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(inputs.siteAddress.value), '_blank') : showToast('計画地住所を入力してください', true));
+  q('openEarthBtn')?.addEventListener('click', () => inputs.siteAddress.value ? window.open('https://earth.google.com/web/search/' + encodeURIComponent(inputs.siteAddress.value), '_blank') : showToast('計画地住所を入力してください', true));
+  q('aiModalMapBtn')?.addEventListener('click', () => inputs.siteAddress.value ? window.open('https://earth.google.com/web/search/' + encodeURIComponent(inputs.siteAddress.value), '_blank') : showToast('計画地住所を入力してください', true));
+  q('aiModalLawBtn')?.addEventListener('click', () => inputs.siteAddress.value ? window.open('https://www.google.com/search?q=' + encodeURIComponent(inputs.siteAddress.value + ' 都市計画マップ 用途地域'), '_blank') : showToast('計画地住所を入力してください', true));
+  inputs.siteAddress?.addEventListener('input', e => updateDynamicMapLinks(e.target.value));
+
+  q('legalCheckBtn')?.addEventListener('click', () => {
+    q('chatWindow')?.classList.remove('hidden');
+    q('chatWindow')?.classList.add('flex');
+    if(q('chatInput')) q('chatInput').value = "この計画地・用途地域で注意すべき追加の建築法規（日影規制、高度地区、防火地域など）のリスクと一般的な制限内容を教えてください。";
+    sendChatMessage();
+  });
+
+  q('relaxationBadges')?.addEventListener('click', (e) => {
+    const badge = e.target.closest('span[data-ai-keyword]');
+    if (badge) {
+      const keyword = badge.dataset.aiKeyword;
+      const chatWin = q('chatWindow');
+      if (chatWin) {
+        chatWin.classList.remove('hidden');
+        chatWin.classList.add('flex');
+      }
+      const chatInput = q('chatInput');
+      if (chatInput) {
+        chatInput.value = `建築基準法の「${keyword}」について、どのような制限（または緩和）なのか、不動産企画・ボリューム検討においてどのような点に注意すべきか、プロの視点から分かりやすく解説してください。`;
+        sendChatMessage();
+      }
+    }
+  });
+
+  q('predictCostBtn')?.addEventListener('click', async () => {
+    const btn = q('predictCostBtn');
+    const resultBox = q('costPredictionResult');
+    if(!btn || !resultBox) return;
+    const originalText = btn.innerHTML;
+
+    btn.innerHTML = '<div class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div> 予測中...';
+    btn.disabled = true;
+    resultBox.classList.remove('hidden');
+    resultBox.innerHTML = '<div class="text-center text-zinc-500 animate-pulse mt-2 mb-2">AIが近隣相場と建築費を分析中...</div>';
+
+    const tsubo = (parseFloat(results.grossArea.textContent) / 3.305785).toFixed(1);
+    if (!hasRuntimeGeminiApiKey()) {
+      resultBox.innerHTML = renderCostPredictionHtml(buildLocalCostPredictionJson());
+      bindCloseCostButton(resultBox);
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      return;
+    }
+    const prompt = `あなたは不動産開発のプロです。以下の建築計画に対する「概算坪建築費」「想定坪賃料」「ターゲット層」を簡潔に予測してください。
+    場所: ${inputs.siteAddress?.value || '未指定'}
+    用途地域: ${inputs.zoneType?.options[inputs.zoneType.selectedIndex].text}
+    延床面積: ${results.grossArea.textContent} m2 (約${tsubo}坪)
+    階数: ${results.resultFloorCount.textContent} 階
+
+    回答は以下のJSONフォーマットで返してください。
+    {
+      "construction_cost_per_tsubo": "〇〇万〜〇〇万円",
+      "total_construction_cost": "約〇〇億円",
+      "expected_rent_per_tsubo": "〇〇円〜〇〇円",
+      "target_audience": "ターゲット層の説明",
+      "advice": "ワンポイントアドバイス"
+    }`;
+
+    try {
+      const data = await fetchGeminiAPI(prompt, { responseMimeType: 'application/json' });
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error('データが取得できませんでした');
+      resultBox.innerHTML = renderCostPredictionHtml(JSON.parse(cleanJsonString(text)));
+      bindCloseCostButton(resultBox);
+    } catch (e) {
+      resultBox.innerHTML = renderCostErrorHtml(e.message);
+      bindCloseCostButton(resultBox);
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  });
+
+  q('viewSettingsBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    q('displayToggles')?.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', (e) => {
+    const toggles = q('displayToggles');
+    const btn = q('viewSettingsBtn');
+    if (toggles && !toggles.classList.contains('hidden') && !toggles.contains(e.target) && (!btn || !btn.contains(e.target))) {
+      toggles.classList.add('hidden');
+    }
+  });
+
+  Object.entries(viewBtns).forEach(([key, btn]) => btn?.addEventListener('click', () => setView(key)));
+  q('generateAiBtn')?.addEventListener('click', handleAiGeneration);
+  q('closeAiModalBtn')?.addEventListener('click', () => { q('aiModal')?.classList.add('hidden'); q('aiModal')?.classList.remove('flex'); });
+
+  const panel = q('floorSelectPanelMain') || q('floorSelectPanel');
+  if(panel) {
+    const select = panel.querySelector('select');
+    select?.addEventListener('change', applyFloorVisibility);
+  }
+
+  let isDraggingDial = false;
+  q('northDial')?.addEventListener('mousedown', e => { isDraggingDial = true; handleNorthDial(e); });
+  document.addEventListener('mousemove', e => { if (isDraggingDial) handleNorthDial(e); });
+  document.addEventListener('mouseup', () => { isDraggingDial = false; });
+  q('northDial')?.addEventListener('touchstart', e => { isDraggingDial = true; handleNorthDial(e); }, { passive:false });
+  document.addEventListener('touchmove', e => { if (isDraggingDial) { e.preventDefault(); handleNorthDial(e); } }, { passive:false });
+  document.addEventListener('touchend', () => { isDraggingDial = false; });
+
+  q('chatFabBtn')?.addEventListener('click', () => { q('chatWindow')?.classList.toggle('hidden'); q('chatWindow')?.classList.toggle('flex'); if (!q('chatWindow')?.classList.contains('hidden')) q('chatInput')?.focus(); });
+  q('closeChatBtn')?.addEventListener('click', () => { q('chatWindow')?.classList.add('hidden'); q('chatWindow')?.classList.remove('flex'); });
+  q('sendChatBtn')?.addEventListener('click', () => sendChatMessage());
+  q('chatInput')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendChatMessage(); });
+
+  const handleResize = () => requestAnimationFrame(resizeCanvasRenderers);
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvasRenderers, 250));
+  window.visualViewport?.addEventListener('resize', handleResize);
+
+  updateAdjSetbackUI();
+  applyZoneAutoInput({ suppressUpdateScene: true });
+  resizeCanvasRenderers();
+  setTimeout(resizeCanvasRenderers, 250);
+  animate();
+  updateScene();
+}
+function animate() {
+  requestAnimationFrame(animate);
+  controls?.update();
+  if (renderer && scene && camera) renderer.render(scene, camera);
+  if (labelRenderer && scene && camera) labelRenderer.render(scene, camera);
+  const compass = q('canvasNorthArrow');
+  if (compass && controls && inputs.northAngle) {
+    compass.style.transform = `rotate(${controls.getAzimuthalAngle() * (180 / Math.PI) + (parseFloat(inputs.northAngle.value) || 0)}deg)`;
+  }
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
